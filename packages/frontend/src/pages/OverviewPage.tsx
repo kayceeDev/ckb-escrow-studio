@@ -23,6 +23,7 @@ import type {
   ActivityItem,
   ActionFormState,
   CreateEscrowFormState,
+  DeploymentProfile,
   DeploymentFormState,
   EscrowListItem,
   WalletState,
@@ -34,6 +35,7 @@ interface OverviewPageProps {
   status: string;
   lastTxHash: string;
   deployment: DeploymentFormState;
+  deploymentProfiles: DeploymentProfile[];
   createForm: CreateEscrowFormState;
   actionForm: ActionFormState;
   activity: ActivityItem[];
@@ -44,6 +46,8 @@ interface OverviewPageProps {
   onExportSnapshot: () => void;
   onImportSnapshot: () => void;
   onResetStudio: () => void;
+  onSaveDeploymentProfile: () => void;
+  onApplyDeploymentProfile: (profile: DeploymentProfile) => void;
   onFetchEscrows: () => void;
   onLoadEscrow: (escrow: EscrowListItem) => void;
 }
@@ -71,6 +75,7 @@ export function OverviewPage({
   status,
   lastTxHash,
   deployment,
+  deploymentProfiles,
   createForm,
   actionForm,
   activity,
@@ -81,6 +86,8 @@ export function OverviewPage({
   onExportSnapshot,
   onImportSnapshot,
   onResetStudio,
+  onSaveDeploymentProfile,
+  onApplyDeploymentProfile,
   onFetchEscrows,
   onLoadEscrow,
 }: OverviewPageProps) {
@@ -205,6 +212,42 @@ export function OverviewPage({
             </p>
             <p className="break-all text-sm">{deployment.depTxHash || "Not set"}</p>
           </div>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" size="sm" onClick={onSaveDeploymentProfile}>
+              Save Profile
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Deployment Profiles</CardTitle>
+          <CardDescription>
+            Save named deployment presets so switching between environments is less error-prone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {deploymentProfiles.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No deployment profiles saved yet.</p>
+          ) : (
+            deploymentProfiles.map((profile) => (
+              <div
+                key={profile.id}
+                className="flex flex-col gap-3 rounded-[1.25rem] border border-border bg-white/75 p-4"
+              >
+                <div>
+                  <strong>{profile.name}</strong>
+                  <p className="mt-1 break-all text-sm text-muted-foreground">
+                    {profile.deployment.codeHash || "No code hash"}
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => onApplyDeploymentProfile(profile)}>
+                  Apply Profile
+                </Button>
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
 

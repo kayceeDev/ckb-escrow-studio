@@ -15,6 +15,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   STORAGE_KEYS,
   createActivityItem,
+  createDeploymentProfile,
   createExplorerTxUrl,
   createStudioSnapshot,
   decodeEscrowHex,
@@ -39,6 +40,7 @@ import type {
   ActivityItem,
   ActionFormState,
   CreateEscrowFormState,
+  DeploymentProfile,
   DeploymentFormState,
   EscrowListItem,
   WalletState,
@@ -74,6 +76,9 @@ export function App() {
   const [deployment, setDeployment] = useState<DeploymentFormState>(() =>
     loadStoredState(STORAGE_KEYS.deployment, initialDeployment),
   );
+  const [deploymentProfiles, setDeploymentProfiles] = useState<DeploymentProfile[]>(() =>
+    loadStoredState(STORAGE_KEYS.deploymentProfiles, [] as DeploymentProfile[]),
+  );
   const [createForm, setCreateForm] = useState<CreateEscrowFormState>(() =>
     loadStoredState(STORAGE_KEYS.create, initialCreateForm),
   );
@@ -105,6 +110,13 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.deployment, JSON.stringify(deployment));
   }, [deployment]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      STORAGE_KEYS.deploymentProfiles,
+      JSON.stringify(deploymentProfiles),
+    );
+  }, [deploymentProfiles]);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.create, JSON.stringify(createForm));
@@ -249,6 +261,22 @@ export function App() {
     setTxPreview("");
     setLastTxHash("");
     setStatus("Studio forms reset.");
+  }
+
+  function saveCurrentDeploymentProfile() {
+    const name = window.prompt("Profile name", `deployment-${deploymentProfiles.length + 1}`);
+    if (!name) {
+      return;
+    }
+
+    const profile = createDeploymentProfile(name, deployment);
+    setDeploymentProfiles((current) => [profile, ...current]);
+    setStatus(`Saved deployment profile "${name}".`);
+  }
+
+  function applyDeploymentProfile(profile: DeploymentProfile) {
+    setDeployment(profile.deployment);
+    setStatus(`Applied deployment profile "${profile.name}".`);
   }
 
   async function fetchEscrows() {
@@ -398,6 +426,7 @@ export function App() {
             status={status}
             lastTxHash={lastTxHash}
             deployment={deployment}
+            deploymentProfiles={deploymentProfiles}
             createForm={createForm}
             actionForm={actionForm}
             activity={activity}
@@ -410,6 +439,8 @@ export function App() {
             onExportSnapshot={exportSnapshot}
             onImportSnapshot={() => importRef.current?.click()}
             onResetStudio={resetStudio}
+            onSaveDeploymentProfile={saveCurrentDeploymentProfile}
+            onApplyDeploymentProfile={applyDeploymentProfile}
             onFetchEscrows={() => void fetchEscrows()}
             onLoadEscrow={loadEscrowIntoActionForm}
           />

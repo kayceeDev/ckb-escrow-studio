@@ -50,6 +50,12 @@ export interface StudioSnapshot {
   action: ActionFormState;
 }
 
+export interface DeploymentProfile {
+  id: string;
+  name: string;
+  deployment: DeploymentFormState;
+}
+
 export interface EscrowListItem {
   txHash: string;
   index: string;

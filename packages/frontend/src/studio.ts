@@ -5,6 +5,7 @@ import type {
   ActivityItem,
   ActionFormState,
   CreateEscrowFormState,
+  DeploymentProfile,
   DeploymentFormState,
   EscrowListItem,
   StudioSnapshot,
@@ -14,6 +15,7 @@ export const testnetClient = new ccc.ClientPublicTestnet();
 
 export const STORAGE_KEYS = {
   deployment: "ckb-escrow:deployment",
+  deploymentProfiles: "ckb-escrow:deployment-profiles",
   create: "ckb-escrow:create",
   action: "ckb-escrow:action",
   activity: "ckb-escrow:activity",
@@ -179,6 +181,17 @@ export function createStudioSnapshot(
     deployment,
     create,
     action,
+  };
+}
+
+export function createDeploymentProfile(
+  name: string,
+  deployment: DeploymentFormState,
+): DeploymentProfile {
+  return {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name,
+    deployment,
   };
 }
 
