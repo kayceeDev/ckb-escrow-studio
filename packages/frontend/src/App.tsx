@@ -1,5 +1,15 @@
 import * as ccc from "@ckb-ccc/ccc";
 import { EscrowService } from "@ckb-escrow/app";
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./components/ui/index.js";
+import { LayoutDashboard, PlusCircle, ScanSearch, Sparkles } from "lucide-react";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -47,6 +57,13 @@ const ActionsPage = lazy(async () =>
 );
 
 type AsyncAction = () => Promise<ccc.Transaction | ccc.Hex>;
+
+const ROUTE_META: Record<RouteId, { icon: React.ReactNode; tone: string }> = {
+  overview: { icon: <LayoutDashboard className="h-4 w-4" />, tone: "Operations snapshot" },
+  create: { icon: <PlusCircle className="h-4 w-4" />, tone: "Fund a new escrow cell" },
+  detail: { icon: <Sparkles className="h-4 w-4" />, tone: "Inspect one escrow deeply" },
+  actions: { icon: <ScanSearch className="h-4 w-4" />, tone: "Execute state transitions" },
+};
 
 export function App() {
   const [walletState, setWalletState] = useState<WalletState>({
@@ -125,7 +142,10 @@ export function App() {
     return () => controller.disconnect();
   }, []);
 
-  const decodedEscrow = useMemo(() => decodeEscrowHex(actionForm.escrowDataHex), [actionForm.escrowDataHex]);
+  const decodedEscrow = useMemo(
+    () => decodeEscrowHex(actionForm.escrowDataHex),
+    [actionForm.escrowDataHex],
+  );
 
   const service = walletState.activeSigner
     ? new EscrowService({
@@ -260,12 +280,12 @@ export function App() {
   };
 
   return (
-    <div className="app-shell">
+    <div className="mx-auto min-h-screen w-full max-w-[1380px] px-4 py-6 md:px-6 md:py-8">
       <input
         ref={importRef}
         type="file"
         accept="application/json"
-        className="hidden-input"
+        className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
           if (file) {
@@ -274,46 +294,96 @@ export function App() {
           event.target.value = "";
         }}
       />
-      <header className="hero">
-        <div>
-          <p className="eyebrow">CKB Escrow Studio</p>
-          <h1>Escrow flows prepared, signed, decoded, and operated like an actual product.</h1>
-          <p className="lede">
-            We are now moving from one giant workbench into an application shell. The protocol and CCC layers stay the same; the frontend becomes easier to navigate and extend.
-          </p>
-        </div>
-        <div className="status-card">
-          <span className="status-label">Status</span>
-          <strong>{status}</strong>
-          {lastTxHash ? (
-            <>
-              <code className="tx-hash">{lastTxHash}</code>
-              <a
-                className="activity-link"
-                href={createExplorerTxUrl(lastTxHash)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open in Explorer
-              </a>
-            </>
-          ) : null}
-        </div>
+
+      <header className="mb-6 grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+        <Card className="overflow-hidden">
+          <CardContent className="space-y-4 p-8">
+            <Badge variant="secondary" className="w-fit">
+              CKB Escrow Studio
+            </Badge>
+            <div className="space-y-3">
+              <h1 className="max-w-4xl font-serif text-4xl font-semibold tracking-tight text-balance md:text-6xl">
+                Tailwind + shadcn-style workspace for escrow creation, discovery, and operation.
+              </h1>
+              <p className="max-w-3xl text-base leading-7 text-muted-foreground md:text-lg">
+                The contract and protocol layers stay separate. This frontend focuses on clean operator workflows, strong state visibility, and reusable UI primitives.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="flex h-full flex-col justify-between gap-6 p-8">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Status
+              </p>
+              <p className="text-lg font-semibold">{status}</p>
+            </div>
+            <div className="space-y-3">
+              {lastTxHash ? (
+                <>
+                  <code className="block rounded-2xl border border-border bg-secondary/70 p-3 text-xs break-all">
+                    {lastTxHash}
+                  </code>
+                  <Button asChild variant="outline" className="w-full">
+                    <a href={createExplorerTxUrl(lastTxHash)} target="_blank" rel="noreferrer">
+                      Open in Explorer
+                    </a>
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No transaction submitted yet.
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </header>
 
-      <nav className="route-nav">
+      <nav className="mb-6 flex flex-wrap gap-3">
         {(Object.entries(ROUTE_LABELS) as [RouteId, string][]).map(([routeId, label]) => (
-          <a
+          <Button
             key={routeId}
-            href={`#/${routeId}`}
-            className={route === routeId ? "route-link active" : "route-link"}
+            asChild
+            variant={route === routeId ? "default" : "outline"}
+            size="sm"
           >
-            {label}
-          </a>
+            <a href={`#/${routeId}`} className="capitalize">
+              {ROUTE_META[routeId].icon}
+              {label}
+            </a>
+          </Button>
         ))}
       </nav>
 
-      <Suspense fallback={<section className="panel"><p className="muted">Loading screen...</p></section>}>
+      <Card className="mb-6">
+        <CardContent className="flex flex-col gap-2 p-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-medium text-foreground">{ROUTE_LABELS[route]}</p>
+            <p className="text-sm text-muted-foreground">{ROUTE_META[route].tone}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant={walletState.activeSigner ? "success" : "destructive"}>
+              {walletState.activeSigner ? "Signer Ready" : "Signer Missing"}
+            </Badge>
+            <Badge variant={deployment.codeHash && deployment.depTxHash ? "success" : "outline"}>
+              {deployment.codeHash && deployment.depTxHash ? "Deployment Loaded" : "Deployment Incomplete"}
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Suspense
+        fallback={
+          <Card>
+            <CardContent className="p-8 text-sm text-muted-foreground">
+              Loading screen...
+            </CardContent>
+          </Card>
+        }
+      >
         {route === "overview" ? (
           <OverviewPage
             walletState={walletState}
@@ -508,10 +578,19 @@ export function App() {
         ) : null}
       </Suspense>
 
-      <section className="panel preview-panel">
-        <h2>Transaction Preview</h2>
-        <pre>{txPreview || "Build or send a transaction to inspect it here."}</pre>
-      </section>
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Transaction Preview</CardTitle>
+          <CardDescription>
+            Preview objects stay available here for inspection before you sign and send.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <pre className="overflow-x-auto rounded-[1.5rem] bg-slate-950 p-5 text-xs leading-6 text-slate-100">
+            {txPreview || "Build or send a transaction to inspect it here."}
+          </pre>
+        </CardContent>
+      </Card>
     </div>
   );
 }

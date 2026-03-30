@@ -1,5 +1,16 @@
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
+import { CalendarClock, FileText, Scale, ShieldCheck, Store, Vault } from "lucide-react";
 
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+} from "../components/ui/index.js";
 import type { CreateEscrowFormState } from "../types.js";
 
 interface CreatePageProps {
@@ -13,6 +24,34 @@ interface CreatePageProps {
   onSend: () => void;
 }
 
+function Field({
+  icon,
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]">
+        {icon}
+        {label}
+      </Label>
+      <Input
+        value={value}
+        placeholder={placeholder}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
 export function CreatePage({
   createForm,
   busy,
@@ -21,105 +60,109 @@ export function CreatePage({
   onSend,
 }: CreatePageProps) {
   return (
-    <section className="panel">
-      <h2>Create Escrow</h2>
-      <p className="muted">
-        Configure seller, arbitrator, escrow lock, amount, deadline, and description for a new escrow cell.
-      </p>
-      <div className="form-grid">
-        <label>
-          <span>Seller Lock Code Hash</span>
-          <input
-            value={createForm.sellerCodeHash}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("sellerCodeHash", event.target.value)
-            }
-            placeholder="0x..."
-          />
-        </label>
-        <label>
-          <span>Seller Args</span>
-          <input
-            value={createForm.sellerArgs}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("sellerArgs", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          <span>Arbitrator Lock Code Hash</span>
-          <input
-            value={createForm.arbitratorCodeHash}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("arbitratorCodeHash", event.target.value)
-            }
-            placeholder="0x..."
-          />
-        </label>
-        <label>
-          <span>Arbitrator Args</span>
-          <input
-            value={createForm.arbitratorArgs}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("arbitratorArgs", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          <span>Escrow Lock Code Hash</span>
-          <input
-            value={createForm.escrowCodeHash}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("escrowCodeHash", event.target.value)
-            }
-            placeholder="0x..."
-          />
-        </label>
-        <label>
-          <span>Escrow Args</span>
-          <input
-            value={createForm.escrowArgs}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("escrowArgs", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          <span>Amount (shannons)</span>
-          <input
-            value={createForm.amountShannons}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("amountShannons", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          <span>Deadline (ms)</span>
-          <input
-            value={createForm.deadlineMs}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("deadlineMs", event.target.value)
-            }
-          />
-        </label>
-        <label className="wide">
-          <span>Description</span>
-          <input
-            value={createForm.description}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("description", event.target.value)
-            }
-          />
-        </label>
-      </div>
-      <div className="actions">
-        <button onClick={onPreview} disabled={busy}>
-          Preview Create
-        </button>
-        <button onClick={onSend} disabled={busy}>
-          Send Create
-        </button>
-      </div>
-    </section>
+    <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+      <Card>
+        <CardHeader>
+          <CardTitle>Create Escrow</CardTitle>
+          <CardDescription>
+            Configure seller, arbitrator, escrow lock, amount, deadline, and description for a new escrow cell.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field
+              icon={<Store className="h-4 w-4" />}
+              label="Seller Lock Code Hash"
+              value={createForm.sellerCodeHash}
+              placeholder="0x..."
+              onChange={(value) => onUpdate("sellerCodeHash", value)}
+            />
+            <Field
+              icon={<Store className="h-4 w-4" />}
+              label="Seller Args"
+              value={createForm.sellerArgs}
+              onChange={(value) => onUpdate("sellerArgs", value)}
+            />
+            <Field
+              icon={<ShieldCheck className="h-4 w-4" />}
+              label="Arbitrator Lock Code Hash"
+              value={createForm.arbitratorCodeHash}
+              placeholder="0x..."
+              onChange={(value) => onUpdate("arbitratorCodeHash", value)}
+            />
+            <Field
+              icon={<ShieldCheck className="h-4 w-4" />}
+              label="Arbitrator Args"
+              value={createForm.arbitratorArgs}
+              onChange={(value) => onUpdate("arbitratorArgs", value)}
+            />
+            <Field
+              icon={<Vault className="h-4 w-4" />}
+              label="Escrow Lock Code Hash"
+              value={createForm.escrowCodeHash}
+              placeholder="0x..."
+              onChange={(value) => onUpdate("escrowCodeHash", value)}
+            />
+            <Field
+              icon={<Vault className="h-4 w-4" />}
+              label="Escrow Args"
+              value={createForm.escrowArgs}
+              onChange={(value) => onUpdate("escrowArgs", value)}
+            />
+            <Field
+              icon={<Scale className="h-4 w-4" />}
+              label="Amount (shannons)"
+              value={createForm.amountShannons}
+              onChange={(value) => onUpdate("amountShannons", value)}
+            />
+            <Field
+              icon={<CalendarClock className="h-4 w-4" />}
+              label="Deadline (ms)"
+              value={createForm.deadlineMs}
+              onChange={(value) => onUpdate("deadlineMs", value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]">
+              <FileText className="h-4 w-4" />
+              Description
+            </Label>
+            <Input
+              value={createForm.description}
+              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                onUpdate("description", event.target.value)
+              }
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" onClick={onPreview} disabled={busy}>
+              Preview Create
+            </Button>
+            <Button onClick={onSend} disabled={busy}>
+              Send Create
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Protocol Notes</CardTitle>
+          <CardDescription>
+            This flow creates the initial funded escrow cell. The buyer lock is derived from the currently selected signer.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
+          <p>
+            The frontend never hand-builds escrow bytes in the form layer. It delegates that to the protocol SDK and app service.
+          </p>
+          <p>
+            That keeps the UX simpler and reduces the risk of the frontend drifting away from the Rust contract layout.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

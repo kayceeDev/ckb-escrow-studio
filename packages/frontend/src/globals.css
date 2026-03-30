@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #f7fbf7;
+  --color-foreground: #0f1f14;
+  --color-card: #ffffff;
+  --color-card-foreground: #0f1f14;
+  --color-muted: #eef5ef;
+  --color-muted-foreground: #5d6e62;
+  --color-border: #dce9de;
+  --color-input: #dce9de;
+  --color-primary: #1e7a46;
+  --color-primary-foreground: #f8fff9;
+  --color-secondary: #edf7ef;
+  --color-secondary-foreground: #19452b;
+  --color-accent: #d9f0df;
+  --color-accent-foreground: #1c5e36;
+  --color-destructive: #b33a2b;
+  --color-destructive-foreground: #fff9f7;
+  --font-sans: "IBM Plex Sans", "Segoe UI", sans-serif;
+  --font-serif: "IBM Plex Serif", Georgia, serif;
+  --radius-sm: 0.75rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+  --shadow-soft: 0 24px 60px rgba(26, 60, 37, 0.08);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply min-h-screen bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at top left, rgba(30, 122, 70, 0.18), transparent 30%),
+      radial-gradient(circle at bottom right, rgba(133, 181, 146, 0.16), transparent 24%),
+      linear-gradient(135deg, #f3fbf4, #f9fdf9 52%, #eef7ef);
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  a {
+    @apply transition-colors;
+  }
+}

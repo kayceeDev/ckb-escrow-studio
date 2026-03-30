@@ -1,7 +1,24 @@
 import type * as ccc from "@ckb-ccc/ccc";
-import type { EscrowCellView } from "@ckb-escrow/sdk";
-import { createExplorerTxUrl } from "../studio.js";
+import {
+  Activity,
+  Download,
+  FolderDown,
+  RefreshCcw,
+  Search,
+  Shield,
+  Wallet,
+} from "lucide-react";
 
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/index.js";
+import { createExplorerTxUrl } from "../studio.js";
 import type {
   ActivityItem,
   ActionFormState,
@@ -13,7 +30,7 @@ import type {
 
 interface OverviewPageProps {
   walletState: WalletState;
-  decodedEscrow: EscrowCellView | null;
+  decodedEscrow: { state: string; amountShannons: bigint; deadlineMs: bigint; descriptionText: string } | null;
   status: string;
   lastTxHash: string;
   deployment: DeploymentFormState;
@@ -29,6 +46,23 @@ interface OverviewPageProps {
   onResetStudio: () => void;
   onFetchEscrows: () => void;
   onLoadEscrow: (escrow: EscrowListItem) => void;
+}
+
+function StatCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+      <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        {label}
+      </span>
+      <strong className="text-xl">{value}</strong>
+    </div>
+  );
 }
 
 export function OverviewPage({
@@ -51,239 +85,282 @@ export function OverviewPage({
   onLoadEscrow,
 }: OverviewPageProps) {
   return (
-    <div className="page-grid">
-      <section className="panel span-2">
-        <div className="panel-head">
+    <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <Card className="xl:col-span-2">
+        <CardHeader className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
-            <h2>System Snapshot</h2>
-            <p className="muted">
-              Quick operational view of wallet state, deployment config, and the currently loaded escrow cell.
-            </p>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-primary" />
+              System Snapshot
+            </CardTitle>
+            <CardDescription>
+              Quick operational view of wallet state, deployment config, and currently loaded escrow context.
+            </CardDescription>
           </div>
-          <button className="secondary-button" onClick={onRefreshWallets}>
-            Refresh Wallets
-          </button>
-          <button className="secondary-button" onClick={onExportSnapshot}>
-            Export Studio
-          </button>
-          <button className="secondary-button" onClick={onImportSnapshot}>
-            Import Studio
-          </button>
-          <button className="secondary-button danger" onClick={onResetStudio}>
-            Reset Forms
-          </button>
-        </div>
-        <div className="stat-grid">
-          <article className="stat-card">
-            <span>Wallets</span>
-            <strong>{walletState.wallets.length}</strong>
-          </article>
-          <article className="stat-card">
-            <span>Active Signer</span>
-            <strong>{walletState.activeSigner ? "Selected" : "Missing"}</strong>
-          </article>
-          <article className="stat-card">
-            <span>Deployment Ready</span>
-            <strong>{deployment.codeHash && deployment.depTxHash ? "Yes" : "No"}</strong>
-          </article>
-          <article className="stat-card">
-            <span>Loaded Escrow</span>
-            <strong>{decodedEscrow ? decodedEscrow.state : "None"}</strong>
-          </article>
-        </div>
-      </section>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" onClick={onRefreshWallets}>
+              <RefreshCcw className="h-4 w-4" />
+              Refresh Wallets
+            </Button>
+            <Button variant="outline" onClick={onExportSnapshot}>
+              <Download className="h-4 w-4" />
+              Export Studio
+            </Button>
+            <Button variant="outline" onClick={onImportSnapshot}>
+              <FolderDown className="h-4 w-4" />
+              Import Studio
+            </Button>
+            <Button variant="destructive" onClick={onResetStudio}>
+              Reset Forms
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-4">
+            <StatCard label="Wallets" value={walletState.wallets.length} />
+            <StatCard
+              label="Active Signer"
+              value={walletState.activeSigner ? "Selected" : "Missing"}
+            />
+            <StatCard
+              label="Deployment Ready"
+              value={deployment.codeHash && deployment.depTxHash ? "Yes" : "No"}
+            />
+            <StatCard label="Loaded Escrow" value={decodedEscrow?.state ?? "None"} />
+          </div>
+        </CardContent>
+      </Card>
 
-      <section className="panel">
-        <h2>Wallets</h2>
-        <div className="wallet-list">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wallet className="h-5 w-5 text-primary" />
+            Wallets
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
           {walletState.wallets.length === 0 ? (
-            <p className="empty">No wallets discovered yet.</p>
+            <p className="text-sm text-muted-foreground">No wallets discovered yet.</p>
           ) : (
             walletState.wallets.map((wallet) => (
-              <div key={wallet.name} className="wallet-card">
-                <div>
-                  <strong>{wallet.name}</strong>
-                  <p className="muted">{wallet.signers.length} signer(s)</p>
-                </div>
-                <div className="signer-list">
+              <div
+                key={wallet.name}
+                className="rounded-[1.25rem] border border-border bg-white/75 p-4"
+              >
+                <strong>{wallet.name}</strong>
+                <p className="mb-3 mt-1 text-sm text-muted-foreground">
+                  {wallet.signers.length} signer(s)
+                </p>
+                <div className="flex flex-wrap gap-2">
                   {wallet.signers.map((signerInfo) => (
-                    <button
+                    <Button
                       key={`${wallet.name}-${signerInfo.name}`}
-                      className={
-                        walletState.activeSigner === signerInfo.signer
-                          ? "signer-button active"
-                          : "signer-button"
+                      variant={
+                        walletState.activeSigner === signerInfo.signer ? "default" : "outline"
                       }
+                      size="sm"
                       onClick={() => onSelectSigner(signerInfo.signer)}
                     >
                       {signerInfo.name}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
             ))
           )}
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="panel">
-        <h2>Deployment Summary</h2>
-        <dl className="decode-grid">
-          <div className="wide">
-            <dt>Type Script Code Hash</dt>
-            <dd>{deployment.codeHash || "Not set"}</dd>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-primary" />
+            Deployment Summary
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Type Script Code Hash
+            </p>
+            <p className="break-all text-sm">{deployment.codeHash || "Not set"}</p>
           </div>
-          <div>
-            <dt>Hash Type</dt>
-            <dd>{deployment.hashType}</dd>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Hash Type
+              </p>
+              <p className="text-sm">{deployment.hashType}</p>
+            </div>
+            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Dep Index
+              </p>
+              <p className="text-sm">{deployment.depIndex}</p>
+            </div>
           </div>
-          <div>
-            <dt>Dep Index</dt>
-            <dd>{deployment.depIndex}</dd>
+          <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Cell Dep Tx Hash
+            </p>
+            <p className="break-all text-sm">{deployment.depTxHash || "Not set"}</p>
           </div>
-          <div className="wide">
-            <dt>Cell Dep Tx Hash</dt>
-            <dd>{deployment.depTxHash || "Not set"}</dd>
-          </div>
-        </dl>
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="panel">
-        <h2>Create Defaults</h2>
-        <dl className="decode-grid">
-          <div>
-            <dt>Amount</dt>
-            <dd>{createForm.amountShannons}</dd>
+      <Card>
+        <CardHeader>
+          <CardTitle>Create Defaults</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <StatCard label="Amount" value={createForm.amountShannons} />
+            <StatCard label="Deadline" value={createForm.deadlineMs} />
           </div>
-          <div>
-            <dt>Deadline</dt>
-            <dd>{createForm.deadlineMs}</dd>
+          <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Description
+            </p>
+            <p className="text-sm">{createForm.description}</p>
           </div>
-          <div className="wide">
-            <dt>Description</dt>
-            <dd>{createForm.description}</dd>
-          </div>
-        </dl>
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="panel">
-        <h2>Escrow Decode</h2>
-        {decodedEscrow ? (
-          <dl className="decode-grid">
-            <div>
-              <dt>State</dt>
-              <dd>{decodedEscrow.state}</dd>
-            </div>
-            <div>
-              <dt>Amount</dt>
-              <dd>{decodedEscrow.amountShannons.toString()}</dd>
-            </div>
-            <div>
-              <dt>Deadline</dt>
-              <dd>{decodedEscrow.deadlineMs.toString()}</dd>
-            </div>
-            <div className="wide">
-              <dt>Description</dt>
-              <dd>{decodedEscrow.descriptionText}</dd>
-            </div>
-            <div className="wide">
-              <dt>Buyer Lock Hash</dt>
-              <dd>{decodedEscrow.buyerLockHash}</dd>
-            </div>
-            <div className="wide">
-              <dt>Seller Lock Hash</dt>
-              <dd>{decodedEscrow.sellerLockHash}</dd>
-            </div>
-            <div className="wide">
-              <dt>Arbitrator Lock Hash</dt>
-              <dd>{decodedEscrow.arbitratorLockHash}</dd>
-            </div>
-          </dl>
-        ) : (
-          <p className="empty">Paste escrow data hex in the Operate screen to decode a live escrow cell.</p>
-        )}
-      </section>
-
-      <section className="panel span-2">
-        <h2>Activity</h2>
-        <dl className="decode-grid">
-          <div className="wide">
-            <dt>Status</dt>
-            <dd>{status}</dd>
-          </div>
-          <div className="wide">
-            <dt>Last Submitted Transaction</dt>
-            <dd>{lastTxHash || "No transaction submitted yet"}</dd>
-          </div>
-          <div className="wide">
-            <dt>Current Escrow Data Hex</dt>
-            <dd>{actionForm.escrowDataHex || "0x"}</dd>
-          </div>
-        </dl>
-        <div className="activity-list">
-          {activity.length === 0 ? (
-            <p className="empty">No recent activity yet.</p>
+      <Card>
+        <CardHeader>
+          <CardTitle>Escrow Decode</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {decodedEscrow ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <StatCard label="State" value={decodedEscrow.state} />
+                <StatCard label="Amount" value={decodedEscrow.amountShannons.toString()} />
+              </div>
+              <StatCard label="Deadline" value={decodedEscrow.deadlineMs.toString()} />
+              <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Description
+                </p>
+                <p className="text-sm">{decodedEscrow.descriptionText}</p>
+              </div>
+            </>
           ) : (
-            activity.map((item) => (
-              <article key={item.id} className="activity-row">
-                <div className="activity-main">
-                  <strong>{item.label}</strong>
-                  <span className={`activity-pill ${item.status}`}>{item.status}</span>
-                  <span>{new Date(item.createdAt).toLocaleString()}</span>
+            <p className="text-sm text-muted-foreground">
+              Paste or load escrow data to decode a live escrow cell.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="xl:col-span-2">
+        <CardHeader className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Search className="h-5 w-5 text-primary" />
+              Discovered Escrows
+            </CardTitle>
+            <CardDescription>
+              Query escrow cells by the configured type script and load one into the detail and operate views.
+            </CardDescription>
+          </div>
+          <Button variant="outline" onClick={onFetchEscrows}>
+            {isFetchingEscrows ? "Loading..." : "Fetch Escrows"}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {discoveredEscrows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No escrow cells loaded yet.</p>
+          ) : (
+            discoveredEscrows.map((escrow) => (
+              <div
+                key={`${escrow.txHash}:${escrow.index}`}
+                className="grid gap-3 rounded-[1.25rem] border border-border bg-white/75 p-4 xl:grid-cols-[1.2fr_0.9fr_auto]"
+              >
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <strong>{escrow.decoded.state}</strong>
+                    <Badge variant="secondary">
+                      {escrow.decoded.amountShannons.toString()} shannons
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{escrow.decoded.descriptionText}</p>
                 </div>
-                <p className="muted">{item.detail}</p>
-                {item.txHash ? (
-                  <a
-                    className="activity-link"
-                    href={createExplorerTxUrl(item.txHash)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    View on Explorer
-                  </a>
-                ) : null}
-              </article>
+                <div className="space-y-1 text-sm text-muted-foreground">
+                  <code className="block break-all">{escrow.txHash}</code>
+                  <div>index {escrow.index}</div>
+                  <div>capacity {escrow.capacity}</div>
+                </div>
+                <div className="flex items-start justify-end">
+                  <Button variant="outline" size="sm" onClick={() => onLoadEscrow(escrow)}>
+                    Load Escrow
+                  </Button>
+                </div>
+              </div>
             ))
           )}
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="panel span-2">
-        <div className="panel-head">
-          <div>
-            <h2>Discovered Escrows</h2>
-            <p className="muted">
-              Querying by the configured escrow type script on testnet. Load any result into the Operate screen.
-            </p>
+      <Card className="xl:col-span-2">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-primary" />
+            Activity
+          </CardTitle>
+          <CardDescription>
+            Preview, submission, and failure events are tracked here so testnet work does not disappear into one status line.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <StatCard label="Status" value={status} />
+            <StatCard label="Last Tx" value={lastTxHash || "None"} />
+            <StatCard label="Loaded Data" value={actionForm.escrowDataHex || "0x"} />
           </div>
-          <button className="secondary-button" onClick={onFetchEscrows}>
-            {isFetchingEscrows ? "Loading..." : "Fetch Escrows"}
-          </button>
-        </div>
-        {discoveredEscrows.length === 0 ? (
-          <p className="empty">No escrow cells loaded yet.</p>
-        ) : (
-          <div className="escrow-list">
-            {discoveredEscrows.map((escrow) => (
-              <article key={`${escrow.txHash}:${escrow.index}`} className="escrow-row">
-                <div className="escrow-row-main">
-                  <strong>{escrow.decoded.state}</strong>
-                  <span>{escrow.decoded.amountShannons.toString()} shannons</span>
-                  <span>{escrow.decoded.descriptionText}</span>
+          <div className="space-y-3">
+            {activity.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No recent activity yet.</p>
+            ) : (
+              activity.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-[1.25rem] border border-border bg-white/75 p-4"
+                >
+                  <div className="mb-2 flex flex-wrap items-center gap-3">
+                    <strong>{item.label}</strong>
+                    <Badge
+                      variant={
+                        item.status === "submitted"
+                          ? "success"
+                          : item.status === "failed"
+                            ? "destructive"
+                            : "secondary"
+                      }
+                    >
+                      {item.status}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {new Date(item.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{item.detail}</p>
+                  {item.txHash ? (
+                    <a
+                      className="mt-3 inline-flex text-sm font-medium text-primary hover:underline"
+                      href={createExplorerTxUrl(item.txHash)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View on Explorer
+                    </a>
+                  ) : null}
                 </div>
-                <div className="escrow-row-meta">
-                  <code>{escrow.txHash}</code>
-                  <span>index {escrow.index}</span>
-                  <span>capacity {escrow.capacity}</span>
-                </div>
-                <button className="secondary-button" onClick={() => onLoadEscrow(escrow)}>
-                  Load Into Operate
-                </button>
-              </article>
-            ))}
+              ))
+            )}
           </div>
-        )}
-      </section>
+        </CardContent>
+      </Card>
     </div>
   );
 }

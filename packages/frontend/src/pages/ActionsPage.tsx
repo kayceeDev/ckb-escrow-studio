@@ -1,5 +1,25 @@
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
+import {
+  ArrowLeftRight,
+  Clock3,
+  Database,
+  Fingerprint,
+  KeyRound,
+  Link2,
+  Shield,
+} from "lucide-react";
 
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Textarea,
+} from "../components/ui/index.js";
 import type { ActionFormState } from "../types.js";
 
 interface ActionsPageProps {
@@ -19,6 +39,34 @@ interface ActionsPageProps {
   onSendResolveToSeller: () => void;
 }
 
+function Field({
+  icon,
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]">
+        {icon}
+        {label}
+      </Label>
+      <Input
+        value={value}
+        placeholder={placeholder}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
 export function ActionsPage({
   actionForm,
   busy,
@@ -33,133 +81,134 @@ export function ActionsPage({
   onSendResolveToSeller,
 }: ActionsPageProps) {
   return (
-    <section className="panel">
-      <h2>Operate Escrow</h2>
-      <p className="muted">
-        Load an escrow cell and then prepare or submit deliver, dispute, refund, and resolve flows.
-      </p>
-      <div className="form-grid">
-        <label>
-          <span>Escrow Tx Hash</span>
-          <input
-            value={actionForm.escrowTxHash}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("escrowTxHash", event.target.value)
-            }
-            placeholder="0x..."
-          />
-        </label>
-        <label>
-          <span>Escrow Index</span>
-          <input
-            value={actionForm.escrowIndex}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("escrowIndex", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          <span>Escrow Capacity</span>
-          <input
-            value={actionForm.escrowCapacity}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("escrowCapacity", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          <span>Escrow Lock Code Hash</span>
-          <input
-            value={actionForm.escrowLockCodeHash}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("escrowLockCodeHash", event.target.value)
-            }
-            placeholder="0x..."
-          />
-        </label>
-        <label>
-          <span>Escrow Lock Args</span>
-          <input
-            value={actionForm.escrowLockArgs}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("escrowLockArgs", event.target.value)
-            }
-          />
-        </label>
-        <label className="wide">
-          <span>Escrow Data Hex</span>
-          <textarea
-            value={actionForm.escrowDataHex}
-            onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-              onUpdate("escrowDataHex", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          <span>Recipient Code Hash</span>
-          <input
-            value={actionForm.recipientCodeHash}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("recipientCodeHash", event.target.value)
-            }
-            placeholder="0x..."
-          />
-        </label>
-        <label>
-          <span>Recipient Args</span>
-          <input
-            value={actionForm.recipientArgs}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("recipientArgs", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          <span>Reference Timestamp (refund)</span>
-          <input
-            value={actionForm.referenceTimestampMs}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("referenceTimestampMs", event.target.value)
-            }
-          />
-        </label>
-        <label>
-          <span>Header Dep Hash (refund)</span>
-          <input
-            value={actionForm.headerDepHash}
-            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-              onUpdate("headerDepHash", event.target.value)
-            }
-            placeholder="0x..."
-          />
-        </label>
-      </div>
-      <div className="actions">
-        <button onClick={onPreviewDeliver} disabled={busy}>
-          Preview Deliver
-        </button>
-        <button onClick={onSendDeliver} disabled={busy}>
-          Send Deliver
-        </button>
-        <button onClick={onPreviewDispute} disabled={busy}>
-          Preview Dispute
-        </button>
-        <button onClick={onSendDispute} disabled={busy}>
-          Send Dispute
-        </button>
-        <button onClick={onPreviewRefund} disabled={busy}>
-          Preview Refund
-        </button>
-        <button onClick={onSendRefund} disabled={busy}>
-          Send Refund
-        </button>
-        <button onClick={onPreviewResolveToSeller} disabled={busy}>
-          Preview Resolve To Seller
-        </button>
-        <button onClick={onSendResolveToSeller} disabled={busy}>
-          Send Resolve To Seller
-        </button>
-      </div>
-    </section>
+    <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+      <Card>
+        <CardHeader>
+          <CardTitle>Operate Escrow</CardTitle>
+          <CardDescription>
+            Load an escrow cell and prepare or submit deliver, dispute, refund, and resolution flows.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field
+              icon={<Link2 className="h-4 w-4" />}
+              label="Escrow Tx Hash"
+              value={actionForm.escrowTxHash}
+              placeholder="0x..."
+              onChange={(value) => onUpdate("escrowTxHash", value)}
+            />
+            <Field
+              icon={<Database className="h-4 w-4" />}
+              label="Escrow Index"
+              value={actionForm.escrowIndex}
+              onChange={(value) => onUpdate("escrowIndex", value)}
+            />
+            <Field
+              icon={<Database className="h-4 w-4" />}
+              label="Escrow Capacity"
+              value={actionForm.escrowCapacity}
+              onChange={(value) => onUpdate("escrowCapacity", value)}
+            />
+            <Field
+              icon={<KeyRound className="h-4 w-4" />}
+              label="Escrow Lock Code Hash"
+              value={actionForm.escrowLockCodeHash}
+              placeholder="0x..."
+              onChange={(value) => onUpdate("escrowLockCodeHash", value)}
+            />
+            <Field
+              icon={<KeyRound className="h-4 w-4" />}
+              label="Escrow Lock Args"
+              value={actionForm.escrowLockArgs}
+              onChange={(value) => onUpdate("escrowLockArgs", value)}
+            />
+            <Field
+              icon={<Shield className="h-4 w-4" />}
+              label="Recipient Code Hash"
+              value={actionForm.recipientCodeHash}
+              placeholder="0x..."
+              onChange={(value) => onUpdate("recipientCodeHash", value)}
+            />
+            <Field
+              icon={<Shield className="h-4 w-4" />}
+              label="Recipient Args"
+              value={actionForm.recipientArgs}
+              onChange={(value) => onUpdate("recipientArgs", value)}
+            />
+            <Field
+              icon={<Clock3 className="h-4 w-4" />}
+              label="Reference Timestamp (refund)"
+              value={actionForm.referenceTimestampMs}
+              onChange={(value) => onUpdate("referenceTimestampMs", value)}
+            />
+            <Field
+              icon={<Fingerprint className="h-4 w-4" />}
+              label="Header Dep Hash (refund)"
+              value={actionForm.headerDepHash}
+              placeholder="0x..."
+              onChange={(value) => onUpdate("headerDepHash", value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]">
+              <ArrowLeftRight className="h-4 w-4" />
+              Escrow Data Hex
+            </Label>
+            <Textarea
+              value={actionForm.escrowDataHex}
+              onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                onUpdate("escrowDataHex", event.target.value)
+              }
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" onClick={onPreviewDeliver} disabled={busy}>
+              Preview Deliver
+            </Button>
+            <Button onClick={onSendDeliver} disabled={busy}>
+              Send Deliver
+            </Button>
+            <Button variant="outline" onClick={onPreviewDispute} disabled={busy}>
+              Preview Dispute
+            </Button>
+            <Button onClick={onSendDispute} disabled={busy}>
+              Send Dispute
+            </Button>
+            <Button variant="outline" onClick={onPreviewRefund} disabled={busy}>
+              Preview Refund
+            </Button>
+            <Button onClick={onSendRefund} disabled={busy}>
+              Send Refund
+            </Button>
+            <Button variant="outline" onClick={onPreviewResolveToSeller} disabled={busy}>
+              Preview Resolve To Seller
+            </Button>
+            <Button onClick={onSendResolveToSeller} disabled={busy}>
+              Send Resolve To Seller
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Operator Notes</CardTitle>
+          <CardDescription>
+            This screen mirrors the contract state machine. Use discovery and detail first, then operate from a loaded cell.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
+          <p>
+            Refund requires both a reference timestamp and a matching header dependency because the contract reads blockchain context through header deps.
+          </p>
+          <p>
+            Resolution requires the arbitrator signer to be active and the correct recipient lock script to be supplied.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
