@@ -65,4 +65,5 @@ export interface ActivityItem {
   createdAt: string;
   txHash?: string;
   detail: string;
+  hint?: string;
 }

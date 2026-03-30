@@ -34,6 +34,7 @@ import {
   testnetClient,
   type RouteId,
 } from "./studio.js";
+import { formatEscrowError } from "./error-format.js";
 import type {
   ActivityItem,
   ActionFormState,
@@ -201,10 +202,16 @@ export function App() {
         );
       }
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
+      const { detail, hint } = formatEscrowError(error);
       setStatus(`${label} failed: ${detail}`);
       setActivity((current) =>
-        [createActivityItem(label, "failed", detail), ...current].slice(0, 12),
+        [
+          {
+            ...createActivityItem(label, "failed", detail),
+            ...(hint ? { hint } : {}),
+          },
+          ...current,
+        ].slice(0, 12),
       );
     } finally {
       setBusyAction(null);

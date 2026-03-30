@@ -345,6 +345,9 @@ export function OverviewPage({
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground">{item.detail}</p>
+                  {item.hint ? (
+                    <p className="mt-2 text-sm font-medium text-primary">{item.hint}</p>
+                  ) : null}
                   {item.txHash ? (
                     <a
                       className="mt-3 inline-flex text-sm font-medium text-primary hover:underline"
