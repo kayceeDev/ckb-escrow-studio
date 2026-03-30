@@ -39,6 +39,9 @@ const OverviewPage = lazy(async () =>
 const CreatePage = lazy(async () =>
   import("./pages/index.js").then((module) => ({ default: module.CreatePage })),
 );
+const DetailPage = lazy(async () =>
+  import("./pages/index.js").then((module) => ({ default: module.DetailPage })),
+);
 const ActionsPage = lazy(async () =>
   import("./pages/index.js").then((module) => ({ default: module.ActionsPage })),
 );
@@ -245,8 +248,8 @@ export function App() {
       escrowLockArgs: escrow.lock.args.toString(),
       escrowDataHex: escrow.decoded.dataHex,
     }));
-    window.location.hash = "#/actions";
-    setStatus(`Loaded escrow ${escrow.txHash}:${escrow.index} into Operate.`);
+    window.location.hash = "#/detail";
+    setStatus(`Loaded escrow ${escrow.txHash}:${escrow.index} into Detail.`);
   }
 
   const pageProps = {
@@ -380,6 +383,25 @@ export function App() {
                   description: createForm.description,
                 }),
               );
+            }}
+          />
+        ) : null}
+
+        {route === "detail" ? (
+          <DetailPage
+            txHash={actionForm.escrowTxHash}
+            index={actionForm.escrowIndex}
+            capacity={actionForm.escrowCapacity}
+            state={decodedEscrow?.state ?? null}
+            amount={decodedEscrow?.amountShannons.toString() ?? null}
+            deadline={decodedEscrow?.deadlineMs.toString() ?? null}
+            description={decodedEscrow?.descriptionText ?? null}
+            buyerLockHash={decodedEscrow?.buyerLockHash ?? null}
+            sellerLockHash={decodedEscrow?.sellerLockHash ?? null}
+            arbitratorLockHash={decodedEscrow?.arbitratorLockHash ?? null}
+            onOpenOperate={() => {
+              window.location.hash = "#/actions";
+              setStatus("Moved to Operate screen.");
             }}
           />
         ) : null}

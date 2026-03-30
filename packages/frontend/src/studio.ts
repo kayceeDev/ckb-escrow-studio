@@ -52,11 +52,12 @@ export const initialActionForm: ActionFormState = {
   headerDepHash: "",
 };
 
-export type RouteId = "overview" | "create" | "actions";
+export type RouteId = "overview" | "create" | "detail" | "actions";
 
 export const ROUTE_LABELS: Record<RouteId, string> = {
   overview: "Overview",
   create: "Create",
+  detail: "Detail",
   actions: "Operate",
 };
 
@@ -142,7 +143,7 @@ export function prettyJson(value: unknown): string {
 
 export function routeFromHash(hash: string): RouteId {
   const route = hash.replace(/^#\/?/, "");
-  if (route === "create" || route === "actions") {
+  if (route === "create" || route === "actions" || route === "detail") {
     return route;
   }
   return "overview";
