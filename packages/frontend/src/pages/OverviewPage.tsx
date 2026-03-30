@@ -5,6 +5,7 @@ import type {
   ActionFormState,
   CreateEscrowFormState,
   DeploymentFormState,
+  EscrowListItem,
   WalletState,
 } from "../types.js";
 
@@ -16,11 +17,15 @@ interface OverviewPageProps {
   deployment: DeploymentFormState;
   createForm: CreateEscrowFormState;
   actionForm: ActionFormState;
+  discoveredEscrows: EscrowListItem[];
+  isFetchingEscrows: boolean;
   onSelectSigner: (signer: ccc.Signer) => void;
   onRefreshWallets: () => void;
   onExportSnapshot: () => void;
   onImportSnapshot: () => void;
   onResetStudio: () => void;
+  onFetchEscrows: () => void;
+  onLoadEscrow: (escrow: EscrowListItem) => void;
 }
 
 export function OverviewPage({
@@ -31,11 +36,15 @@ export function OverviewPage({
   deployment,
   createForm,
   actionForm,
+  discoveredEscrows,
+  isFetchingEscrows,
   onSelectSigner,
   onRefreshWallets,
   onExportSnapshot,
   onImportSnapshot,
   onResetStudio,
+  onFetchEscrows,
+  onLoadEscrow,
 }: OverviewPageProps) {
   return (
     <div className="page-grid">
@@ -207,6 +216,43 @@ export function OverviewPage({
             <dd>{actionForm.escrowDataHex || "0x"}</dd>
           </div>
         </dl>
+      </section>
+
+      <section className="panel span-2">
+        <div className="panel-head">
+          <div>
+            <h2>Discovered Escrows</h2>
+            <p className="muted">
+              Querying by the configured escrow type script on testnet. Load any result into the Operate screen.
+            </p>
+          </div>
+          <button className="secondary-button" onClick={onFetchEscrows}>
+            {isFetchingEscrows ? "Loading..." : "Fetch Escrows"}
+          </button>
+        </div>
+        {discoveredEscrows.length === 0 ? (
+          <p className="empty">No escrow cells loaded yet.</p>
+        ) : (
+          <div className="escrow-list">
+            {discoveredEscrows.map((escrow) => (
+              <article key={`${escrow.txHash}:${escrow.index}`} className="escrow-row">
+                <div className="escrow-row-main">
+                  <strong>{escrow.decoded.state}</strong>
+                  <span>{escrow.decoded.amountShannons.toString()} shannons</span>
+                  <span>{escrow.decoded.descriptionText}</span>
+                </div>
+                <div className="escrow-row-meta">
+                  <code>{escrow.txHash}</code>
+                  <span>index {escrow.index}</span>
+                  <span>capacity {escrow.capacity}</span>
+                </div>
+                <button className="secondary-button" onClick={() => onLoadEscrow(escrow)}>
+                  Load Into Operate
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

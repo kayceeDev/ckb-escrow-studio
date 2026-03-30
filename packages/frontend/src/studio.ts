@@ -5,6 +5,7 @@ import type {
   ActionFormState,
   CreateEscrowFormState,
   DeploymentFormState,
+  EscrowListItem,
   StudioSnapshot,
 } from "./types.js";
 
@@ -180,4 +181,31 @@ export function parseStudioSnapshot(raw: string): StudioSnapshot {
       ...parsed.action,
     },
   };
+}
+
+export async function fetchEscrowCellsByType(
+  deployment: DeploymentFormState,
+  limit = 12,
+): Promise<EscrowListItem[]> {
+  const items: EscrowListItem[] = [];
+
+  for await (const cell of testnetClient.findCellsByType(makeTypeScript(deployment), true, "desc", limit)) {
+    try {
+      items.push({
+        txHash: cell.outPoint.txHash,
+        index: cell.outPoint.index.toString(),
+        capacity: cell.cellOutput.capacity.toString(),
+        lock: cell.cellOutput.lock,
+        decoded: decodeEscrowData(cell.outputData),
+      });
+    } catch {
+      // Skip cells that do not decode as the current escrow protocol layout.
+    }
+
+    if (items.length >= limit) {
+      break;
+    }
+  }
+
+  return items;
 }

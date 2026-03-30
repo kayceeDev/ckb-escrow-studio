@@ -6,6 +6,7 @@ import {
   STORAGE_KEYS,
   createStudioSnapshot,
   decodeEscrowHex,
+  fetchEscrowCellsByType,
   initialActionForm,
   initialCreateForm,
   initialDeployment,
@@ -25,6 +26,7 @@ import type {
   ActionFormState,
   CreateEscrowFormState,
   DeploymentFormState,
+  EscrowListItem,
   WalletState,
 } from "./types.js";
 
@@ -59,6 +61,8 @@ export function App() {
   const [status, setStatus] = useState<string>("Idle");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [route, setRoute] = useState<RouteId>(() => routeFromHash(window.location.hash));
+  const [discoveredEscrows, setDiscoveredEscrows] = useState<EscrowListItem[]>([]);
+  const [isFetchingEscrows, setIsFetchingEscrows] = useState(false);
   const controllerRef = useRef<ccc.SignersController | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
 
@@ -191,6 +195,34 @@ export function App() {
     setStatus("Studio forms reset.");
   }
 
+  async function fetchEscrows() {
+    try {
+      setIsFetchingEscrows(true);
+      setStatus("Fetching escrow cells by type script...");
+      const escrows = await fetchEscrowCellsByType(deployment);
+      setDiscoveredEscrows(escrows);
+      setStatus(`Fetched ${escrows.length} escrow cell(s).`);
+    } catch (error) {
+      setStatus(`Escrow fetch failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsFetchingEscrows(false);
+    }
+  }
+
+  function loadEscrowIntoActionForm(escrow: EscrowListItem) {
+    setActionForm((current) => ({
+      ...current,
+      escrowTxHash: escrow.txHash,
+      escrowIndex: escrow.index,
+      escrowCapacity: escrow.capacity,
+      escrowLockCodeHash: escrow.lock.codeHash.toString(),
+      escrowLockArgs: escrow.lock.args.toString(),
+      escrowDataHex: escrow.decoded.dataHex,
+    }));
+    window.location.hash = "#/actions";
+    setStatus(`Loaded escrow ${escrow.txHash}:${escrow.index} into Operate.`);
+  }
+
   const pageProps = {
     createForm,
     actionForm,
@@ -250,6 +282,8 @@ export function App() {
             deployment={deployment}
             createForm={createForm}
             actionForm={actionForm}
+            discoveredEscrows={discoveredEscrows}
+            isFetchingEscrows={isFetchingEscrows}
             onSelectSigner={(signer) =>
               setWalletState((current) => ({ ...current, activeSigner: signer }))
             }
@@ -257,6 +291,8 @@ export function App() {
             onExportSnapshot={exportSnapshot}
             onImportSnapshot={() => importRef.current?.click()}
             onResetStudio={resetStudio}
+            onFetchEscrows={() => void fetchEscrows()}
+            onLoadEscrow={loadEscrowIntoActionForm}
           />
         ) : null}
 

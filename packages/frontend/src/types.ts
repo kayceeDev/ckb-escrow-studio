@@ -1,4 +1,5 @@
 import type * as ccc from "@ckb-ccc/ccc";
+import type { EscrowCellView } from "@ckb-escrow/sdk";
 
 export interface DeploymentFormState {
   codeHash: string;
@@ -47,4 +48,12 @@ export interface StudioSnapshot {
   deployment: DeploymentFormState;
   create: CreateEscrowFormState;
   action: ActionFormState;
+}
+
+export interface EscrowListItem {
+  txHash: string;
+  index: string;
+  capacity: string;
+  decoded: EscrowCellView;
+  lock: ccc.ScriptLike;
 }
