@@ -4,6 +4,8 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   STORAGE_KEYS,
+  createActivityItem,
+  createExplorerTxUrl,
   createStudioSnapshot,
   decodeEscrowHex,
   fetchEscrowCellsByType,
@@ -23,6 +25,7 @@ import {
   type RouteId,
 } from "./studio.js";
 import type {
+  ActivityItem,
   ActionFormState,
   CreateEscrowFormState,
   DeploymentFormState,
@@ -60,6 +63,9 @@ export function App() {
   const [lastTxHash, setLastTxHash] = useState<string>("");
   const [status, setStatus] = useState<string>("Idle");
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [activity, setActivity] = useState<ActivityItem[]>(() =>
+    loadStoredState(STORAGE_KEYS.activity, [] as ActivityItem[]),
+  );
   const [route, setRoute] = useState<RouteId>(() => routeFromHash(window.location.hash));
   const [discoveredEscrows, setDiscoveredEscrows] = useState<EscrowListItem[]>([]);
   const [isFetchingEscrows, setIsFetchingEscrows] = useState(false);
@@ -86,6 +92,10 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.action, JSON.stringify(actionForm));
   }, [actionForm]);
+
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEYS.activity, JSON.stringify(activity));
+  }, [activity]);
 
   useEffect(() => {
     const controller = new ccc.SignersController();
@@ -150,13 +160,29 @@ export function App() {
         setLastTxHash(result);
         setTxPreview("");
         setStatus(`${label} submitted.`);
+        setActivity((current) =>
+          [
+            createActivityItem(label, "submitted", `Transaction ${result} submitted.`, result),
+            ...current,
+          ].slice(0, 12),
+        );
       } else {
         setTxPreview(prettyJson(result));
         setLastTxHash("");
         setStatus(`${label} prepared.`);
+        setActivity((current) =>
+          [
+            createActivityItem(label, "prepared", `${label} transaction preview updated.`),
+            ...current,
+          ].slice(0, 12),
+        );
       }
     } catch (error) {
-      setStatus(`${label} failed: ${error instanceof Error ? error.message : String(error)}`);
+      const detail = error instanceof Error ? error.message : String(error);
+      setStatus(`${label} failed: ${detail}`);
+      setActivity((current) =>
+        [createActivityItem(label, "failed", detail), ...current].slice(0, 12),
+      );
     } finally {
       setBusyAction(null);
     }
@@ -256,7 +282,19 @@ export function App() {
         <div className="status-card">
           <span className="status-label">Status</span>
           <strong>{status}</strong>
-          {lastTxHash ? <code className="tx-hash">{lastTxHash}</code> : null}
+          {lastTxHash ? (
+            <>
+              <code className="tx-hash">{lastTxHash}</code>
+              <a
+                className="activity-link"
+                href={createExplorerTxUrl(lastTxHash)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open in Explorer
+              </a>
+            </>
+          ) : null}
         </div>
       </header>
 
@@ -282,6 +320,7 @@ export function App() {
             deployment={deployment}
             createForm={createForm}
             actionForm={actionForm}
+            activity={activity}
             discoveredEscrows={discoveredEscrows}
             isFetchingEscrows={isFetchingEscrows}
             onSelectSigner={(signer) =>

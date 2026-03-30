@@ -2,6 +2,7 @@ import * as ccc from "@ckb-ccc/ccc";
 import { decodeEscrowData, type EscrowCellView } from "@ckb-escrow/sdk";
 
 import type {
+  ActivityItem,
   ActionFormState,
   CreateEscrowFormState,
   DeploymentFormState,
@@ -15,6 +16,7 @@ export const STORAGE_KEYS = {
   deployment: "ckb-escrow:deployment",
   create: "ckb-escrow:create",
   action: "ckb-escrow:action",
+  activity: "ckb-escrow:activity",
 } as const;
 
 export const initialDeployment: DeploymentFormState = {
@@ -144,6 +146,26 @@ export function routeFromHash(hash: string): RouteId {
     return route;
   }
   return "overview";
+}
+
+export function createExplorerTxUrl(txHash: string): string {
+  return `https://pudge.explorer.nervos.org/transaction/${txHash}?network=testnet`;
+}
+
+export function createActivityItem(
+  label: string,
+  status: ActivityItem["status"],
+  detail: string,
+  txHash?: string,
+): ActivityItem {
+  return {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    label,
+    status,
+    createdAt: new Date().toISOString(),
+    detail,
+    ...(txHash ? { txHash } : {}),
+  };
 }
 
 export function createStudioSnapshot(

@@ -57,3 +57,12 @@ export interface EscrowListItem {
   decoded: EscrowCellView;
   lock: ccc.ScriptLike;
 }
+
+export interface ActivityItem {
+  id: string;
+  label: string;
+  status: "prepared" | "submitted" | "failed";
+  createdAt: string;
+  txHash?: string;
+  detail: string;
+}

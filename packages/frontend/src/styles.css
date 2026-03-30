@@ -343,6 +343,56 @@ select {
   word-break: break-all;
 }
 
+.activity-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.activity-row {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.activity-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.activity-pill {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.activity-pill.prepared {
+  background: rgba(82, 133, 189, 0.12);
+  color: #28547a;
+}
+
+.activity-pill.submitted {
+  background: rgba(78, 125, 88, 0.16);
+  color: #285036;
+}
+
+.activity-pill.failed {
+  background: rgba(160, 62, 47, 0.14);
+  color: #8b2f22;
+}
+
+.activity-link {
+  color: var(--accent-deep);
+  text-decoration: none;
+  font-weight: 600;
+}
+
 @media (max-width: 960px) {
   .hero,
   .grid,

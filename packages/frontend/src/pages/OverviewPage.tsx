@@ -1,7 +1,9 @@
 import type * as ccc from "@ckb-ccc/ccc";
 import type { EscrowCellView } from "@ckb-escrow/sdk";
+import { createExplorerTxUrl } from "../studio.js";
 
 import type {
+  ActivityItem,
   ActionFormState,
   CreateEscrowFormState,
   DeploymentFormState,
@@ -17,6 +19,7 @@ interface OverviewPageProps {
   deployment: DeploymentFormState;
   createForm: CreateEscrowFormState;
   actionForm: ActionFormState;
+  activity: ActivityItem[];
   discoveredEscrows: EscrowListItem[];
   isFetchingEscrows: boolean;
   onSelectSigner: (signer: ccc.Signer) => void;
@@ -36,6 +39,7 @@ export function OverviewPage({
   deployment,
   createForm,
   actionForm,
+  activity,
   discoveredEscrows,
   isFetchingEscrows,
   onSelectSigner,
@@ -216,6 +220,32 @@ export function OverviewPage({
             <dd>{actionForm.escrowDataHex || "0x"}</dd>
           </div>
         </dl>
+        <div className="activity-list">
+          {activity.length === 0 ? (
+            <p className="empty">No recent activity yet.</p>
+          ) : (
+            activity.map((item) => (
+              <article key={item.id} className="activity-row">
+                <div className="activity-main">
+                  <strong>{item.label}</strong>
+                  <span className={`activity-pill ${item.status}`}>{item.status}</span>
+                  <span>{new Date(item.createdAt).toLocaleString()}</span>
+                </div>
+                <p className="muted">{item.detail}</p>
+                {item.txHash ? (
+                  <a
+                    className="activity-link"
+                    href={createExplorerTxUrl(item.txHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View on Explorer
+                  </a>
+                ) : null}
+              </article>
+            ))
+          )}
+        </div>
       </section>
 
       <section className="panel span-2">
