@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { App } from "./App.js";
+import { App } from "./App";
 
 describe("frontend app", () => {
   it("exports the application shell", () => {

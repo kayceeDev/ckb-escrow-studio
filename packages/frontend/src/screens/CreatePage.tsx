@@ -10,8 +10,8 @@ import {
   CardTitle,
   Input,
   Label,
-} from "../components/ui/index.js";
-import type { CreateEscrowFormState } from "../types.js";
+} from "../components/ui";
+import type { CreateEscrowFormState } from "../types";
 
 interface CreatePageProps {
   createForm: CreateEscrowFormState;

@@ -17,8 +17,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../components/ui/index.js";
-import { createExplorerTxUrl } from "../studio.js";
+} from "../components/ui";
+import { createExplorerTxUrl } from "../studio";
 import type {
   ActivityItem,
   ActionFormState,
@@ -27,7 +27,7 @@ import type {
   DeploymentFormState,
   EscrowListItem,
   WalletState,
-} from "../types.js";
+} from "../types";
 
 interface OverviewPageProps {
   walletState: WalletState;

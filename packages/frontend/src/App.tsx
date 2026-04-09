@@ -1,1 +1,1 @@
-export { StudioApp as App } from "./StudioApp.js";
+export { StudioApp as App } from "./StudioApp";

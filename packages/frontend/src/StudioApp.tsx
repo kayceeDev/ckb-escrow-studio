@@ -1,5 +1,9 @@
+"use client";
+
+import React from "react";
 import * as ccc from "@ckb-ccc/ccc";
 import { EscrowService } from "@ckb-escrow/app";
+import type { ReactNode } from "react";
 import {
   Badge,
   Button,
@@ -8,7 +12,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "./components/ui/index.js";
+} from "./components/ui";
 import { LayoutDashboard, PlusCircle, ScanSearch, Sparkles } from "lucide-react";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 
@@ -34,8 +38,8 @@ import {
   ROUTE_LABELS,
   testnetClient,
   type RouteId,
-} from "./studio.js";
-import { formatEscrowError } from "./error-format.js";
+} from "./studio";
+import { formatEscrowError } from "./error-format";
 import type {
   ActivityItem,
   ActionFormState,
@@ -44,24 +48,24 @@ import type {
   DeploymentFormState,
   EscrowListItem,
   WalletState,
-} from "./types.js";
+} from "./types";
 
 const OverviewPage = lazy(async () =>
-  import("./pages/index.js").then((module) => ({ default: module.OverviewPage })),
+  import("./screens").then((module) => ({ default: module.OverviewPage })),
 );
 const CreatePage = lazy(async () =>
-  import("./pages/index.js").then((module) => ({ default: module.CreatePage })),
+  import("./screens").then((module) => ({ default: module.CreatePage })),
 );
 const DetailPage = lazy(async () =>
-  import("./pages/index.js").then((module) => ({ default: module.DetailPage })),
+  import("./screens").then((module) => ({ default: module.DetailPage })),
 );
 const ActionsPage = lazy(async () =>
-  import("./pages/index.js").then((module) => ({ default: module.ActionsPage })),
+  import("./screens").then((module) => ({ default: module.ActionsPage })),
 );
 
 type AsyncAction = () => Promise<ccc.Transaction | ccc.Hex>;
 
-const ROUTE_META: Record<RouteId, { icon: React.ReactNode; tone: string }> = {
+const ROUTE_META: Record<RouteId, { icon: ReactNode; tone: string }> = {
   overview: { icon: <LayoutDashboard className="h-4 w-4" />, tone: "Operations snapshot" },
   create: { icon: <PlusCircle className="h-4 w-4" />, tone: "Fund a new escrow cell" },
   detail: { icon: <Sparkles className="h-4 w-4" />, tone: "Inspect one escrow deeply" },
@@ -92,7 +96,9 @@ export function StudioApp() {
   const [activity, setActivity] = useState<ActivityItem[]>(() =>
     loadStoredState(STORAGE_KEYS.activity, [] as ActivityItem[]),
   );
-  const [route, setRoute] = useState<RouteId>(() => routeFromHash(window.location.hash));
+  const [route, setRoute] = useState<RouteId>(() =>
+    typeof window === "undefined" ? "overview" : routeFromHash(window.location.hash),
+  );
   const [discoveredEscrows, setDiscoveredEscrows] = useState<EscrowListItem[]>([]);
   const [isFetchingEscrows, setIsFetchingEscrows] = useState(false);
   const controllerRef = useRef<ccc.SignersController | null>(null);

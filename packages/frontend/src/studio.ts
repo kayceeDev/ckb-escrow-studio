@@ -9,7 +9,7 @@ import type {
   DeploymentFormState,
   EscrowListItem,
   StudioSnapshot,
-} from "./types.js";
+} from "./types";
 
 export const testnetClient = new ccc.ClientPublicTestnet();
 

@@ -7,8 +7,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../components/ui/index.js";
-import { createExplorerTxUrl } from "../studio.js";
+} from "../components/ui";
+import { createExplorerTxUrl } from "../studio";
 
 interface DetailPageProps {
   txHash: string;

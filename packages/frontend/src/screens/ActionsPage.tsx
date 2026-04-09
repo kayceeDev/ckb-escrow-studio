@@ -19,8 +19,8 @@ import {
   Input,
   Label,
   Textarea,
-} from "../components/ui/index.js";
-import type { ActionFormState } from "../types.js";
+} from "../components/ui";
+import type { ActionFormState } from "../types";
 
 interface ActionsPageProps {
   actionForm: ActionFormState;
