@@ -74,7 +74,23 @@ export function loadStoredState<T>(key: string, fallback: T): T {
   }
 
   try {
-    return { ...fallback, ...JSON.parse(raw) } as T;
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (Array.isArray(fallback)) {
+      return (Array.isArray(parsed) ? parsed : fallback) as T;
+    }
+
+    if (
+      fallback !== null &&
+      typeof fallback === "object" &&
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+    ) {
+      return { ...fallback, ...parsed } as T;
+    }
+
+    return (parsed as T) ?? fallback;
   } catch {
     return fallback;
   }
