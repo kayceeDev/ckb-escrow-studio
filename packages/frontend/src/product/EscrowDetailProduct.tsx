@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   ArrowRight,
   CalendarClock,
+  CircleHelp,
   Scale,
   ShieldCheck,
   Store,
@@ -90,6 +91,15 @@ export function EscrowDetailProduct({ escrow }: { escrow: ProductEscrowRecord })
                 </div>
                 <strong>{escrow.seller}</strong>
               </div>
+            </div>
+            <div className="mt-4 rounded-[1.25rem] border border-border bg-secondary/55 p-4 text-sm text-muted-foreground">
+              <div className="mb-2 flex items-center gap-2 text-primary">
+                <CircleHelp className="h-4 w-4" />
+                <strong>Status Guidance</strong>
+              </div>
+              <p>
+                This page translates the protocol state into buyer-facing language so the next action is obvious without understanding CKB internals.
+              </p>
             </div>
           </CardContent>
         </Card>

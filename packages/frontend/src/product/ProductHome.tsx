@@ -5,8 +5,11 @@ import {
   ArrowRight,
   CalendarClock,
   CheckCircle2,
+  Dot,
+  HandCoins,
   ShieldCheck,
   Sparkles,
+  TimerReset,
   Wallet,
 } from "lucide-react";
 
@@ -24,7 +27,7 @@ import { productEscrows } from "./mock-data";
 export function ProductHome() {
   return (
     <div className="mx-auto w-full max-w-[1280px] px-4 py-10 md:px-6 md:py-12">
-      <header className="mb-10 grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
+      <header className="mb-12 grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
         <Card className="overflow-hidden">
           <CardContent className="space-y-6 p-8 md:p-12">
             <div className="flex flex-wrap items-center gap-3">
@@ -43,6 +46,23 @@ export function ProductHome() {
               <p className="max-w-3xl text-base leading-8 text-muted-foreground md:text-lg">
                 Create escrow for known parties, use the platform arbitrator by default, and keep every payment path explicit on CKB. No noisy marketplace clutter. Just escrow, delivery, dispute, and release.
               </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+              {[
+                "Known parties only",
+                "Buyer-first flow",
+                "Platform arbitrator default",
+                "Manual override available",
+              ].map((item) => (
+                <div
+                  key={item}
+                  className="inline-flex items-center gap-2 rounded-full border border-border bg-white/70 px-3 py-2"
+                >
+                  <Dot className="h-4 w-4 text-primary" />
+                  {item}
+                </div>
+              ))}
             </div>
 
             <div className="grid gap-3 md:grid-cols-3">
@@ -122,24 +142,30 @@ export function ProductHome() {
         </Card>
       </header>
 
-      <section className="mb-10 grid gap-4 md:grid-cols-3">
+      <section className="mb-12 grid gap-4 md:grid-cols-3">
         {[
           {
             title: "1. Fund escrow",
             body: "Buyer creates the escrow, names the seller, and locks payment on chain.",
+            icon: <HandCoins className="h-5 w-5 text-primary" />,
           },
           {
             title: "2. Seller delivers",
             body: "Seller marks work or goods as delivered when the obligation is fulfilled.",
+            icon: <CheckCircle2 className="h-5 w-5 text-primary" />,
           },
           {
             title: "3. Release or resolve",
             body: "Buyer releases funds, disputes, or refunds after deadline. Arbitrator resolves if needed.",
+            icon: <TimerReset className="h-5 w-5 text-primary" />,
           },
         ].map((step) => (
           <Card key={step.title}>
             <CardHeader>
-              <CardTitle className="text-lg">{step.title}</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                {step.icon}
+                {step.title}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm leading-6 text-muted-foreground">{step.body}</p>
@@ -180,6 +206,10 @@ export function ProductHome() {
                 <CardDescription>{escrow.description}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline">{escrow.role}</Badge>
+                  <Badge variant="outline">{escrow.arbitrator}</Badge>
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-border bg-white/75 p-4">
                     <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">

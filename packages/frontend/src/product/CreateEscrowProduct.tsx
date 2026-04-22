@@ -16,6 +16,7 @@ import {
 import {
   CalendarClock,
   FileText,
+  Info,
   Scale,
   ShieldCheck,
   Store,
@@ -63,6 +64,16 @@ export function CreateEscrowProduct() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="rounded-[1.5rem] border border-primary/20 bg-primary/8 p-4">
+              <div className="mb-2 flex items-center gap-2 text-primary">
+                <Info className="h-4 w-4" />
+                <span className="text-sm font-semibold">What happens next?</span>
+              </div>
+              <p className="text-sm leading-6 text-muted-foreground">
+                Once funded, the escrow stays in a <strong className="text-foreground">Funded</strong> state until the seller marks it delivered or the buyer chooses another valid action path.
+              </p>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               <Field
                 label="Seller Wallet / Address"
@@ -163,6 +174,12 @@ export function CreateEscrowProduct() {
                 <li>Dispute if the seller claims delivery too early.</li>
                 <li>Refund only after the deadline path is valid.</li>
               </ul>
+            </div>
+            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+              <p className="mb-2 font-medium text-foreground">Arbitrator choice</p>
+              <p>
+                Use the platform arbitrator if you want the simplest path, and only switch to a custom arbitrator when both parties already trust that address.
+              </p>
             </div>
           </CardContent>
         </Card>
