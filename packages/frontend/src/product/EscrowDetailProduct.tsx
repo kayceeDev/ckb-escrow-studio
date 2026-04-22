@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { ArrowRight, CalendarClock, Scale, ShieldCheck, Store } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarClock,
+  Scale,
+  ShieldCheck,
+  Store,
+} from "lucide-react";
 
 import {
   Badge,
@@ -15,13 +21,17 @@ import type { ProductEscrowRecord } from "./mock-data";
 function actionCopy(record: ProductEscrowRecord) {
   switch (record.state) {
     case "Funded":
-      return ["Wait for seller delivery", "Open dispute", "Request refund after deadline"];
+      return [
+        "Wait for seller to mark delivered",
+        "Open a dispute if the scope or timing changes",
+        "Request refund after the deadline if the seller never fulfills",
+      ];
     case "Delivered":
       return ["Release payment", "Open dispute"];
     case "Disputed":
       return ["Await arbitrator decision"];
     default:
-      return ["Escrow is not actionable in the buyer flow"];
+      return ["No direct buyer action available"];
   }
 }
 
@@ -29,7 +39,7 @@ export function EscrowDetailProduct({ escrow }: { escrow: ProductEscrowRecord })
   const actions = actionCopy(escrow);
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-[1100px] px-4 py-8 md:px-6">
+    <div className="mx-auto w-full max-w-[1200px] px-4 py-10 md:px-6">
       <div className="mb-8 flex flex-wrap items-center gap-3">
         <Badge variant={escrow.state === "Disputed" ? "destructive" : "success"}>
           {escrow.state}
@@ -40,14 +50,14 @@ export function EscrowDetailProduct({ escrow }: { escrow: ProductEscrowRecord })
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <Card className="xl:col-span-2">
           <CardHeader className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div>
-              <CardTitle className="text-2xl">{escrow.title}</CardTitle>
+            <div className="space-y-2">
+              <CardTitle className="text-3xl">{escrow.title}</CardTitle>
               <CardDescription>{escrow.description}</CardDescription>
             </div>
             <div className="flex flex-wrap gap-3">
               <Button>Primary Buyer Action</Button>
               <Button asChild variant="outline">
-                <Link href="/studio#/actions">Open Studio Operate</Link>
+                <Link href="/studio">Open Studio Operate</Link>
               </Button>
             </div>
           </CardHeader>
@@ -87,10 +97,16 @@ export function EscrowDetailProduct({ escrow }: { escrow: ProductEscrowRecord })
         <Card>
           <CardHeader>
             <CardTitle>Timeline</CardTitle>
+            <CardDescription>
+              State progression shown in buyer language instead of protocol jargon.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {escrow.timeline.map((step) => (
-              <div key={step.label} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+              <div
+                key={step.label}
+                className="rounded-[1.25rem] border border-border bg-white/75 p-4"
+              >
                 <div className="mb-2 flex items-center gap-2">
                   <Badge
                     variant={
@@ -115,12 +131,15 @@ export function EscrowDetailProduct({ escrow }: { escrow: ProductEscrowRecord })
           <CardHeader>
             <CardTitle>Available Buyer Actions</CardTitle>
             <CardDescription>
-              These are the product-facing actions; the studio route remains available for protocol-level control.
+              Guided next steps from the buyer perspective.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {actions.map((action) => (
-              <div key={action} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+              <div
+                key={action}
+                className="rounded-[1.25rem] border border-border bg-white/75 p-4"
+              >
                 <div className="flex items-center justify-between gap-3">
                   <span>{action}</span>
                   <ArrowRight className="h-4 w-4 text-primary" />
