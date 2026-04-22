@@ -5,6 +5,13 @@ import * as ccc from "@ckb-ccc/ccc";
 import { EscrowService } from "@ckb-escrow/app";
 
 import { createCellDep, createTypeScript } from "./utils";
+import {
+  loadParticipantScriptRegistry,
+  PARTICIPANT_SCRIPT_STORAGE_KEY,
+  persistParticipantScriptRegistry,
+  storedScriptFromScriptLike,
+  type ParticipantScriptRegistry,
+} from "./registry";
 import { fetchEscrowCellsByType, initialDeployment, loadStoredState, STORAGE_KEYS, testnetClient } from "../studio";
 import type { DeploymentFormState, EscrowListItem, WalletState } from "../types";
 
@@ -21,6 +28,9 @@ export function useProductWorkspace() {
   const [isFetchingEscrows, setIsFetchingEscrows] = useState(false);
   const [status, setStatus] = useState("Idle");
   const [activeLockHash, setActiveLockHash] = useState<string | null>(null);
+  const [participantScripts, setParticipantScripts] = useState<ParticipantScriptRegistry>(() =>
+    loadParticipantScriptRegistry(),
+  );
   const controllerRef = useRef<ccc.SignersController | null>(null);
 
   useEffect(() => {
@@ -49,15 +59,22 @@ export function useProductWorkspace() {
   }, []);
 
   useEffect(() => {
-    function syncDeployment(event: StorageEvent) {
+    function syncStorage(event: StorageEvent) {
       if (event.key === STORAGE_KEYS.deployment) {
         setDeployment(loadStoredState(STORAGE_KEYS.deployment, initialDeployment));
       }
+      if (event.key === PARTICIPANT_SCRIPT_STORAGE_KEY) {
+        setParticipantScripts(loadParticipantScriptRegistry());
+      }
     }
 
-    window.addEventListener("storage", syncDeployment);
-    return () => window.removeEventListener("storage", syncDeployment);
+    window.addEventListener("storage", syncStorage);
+    return () => window.removeEventListener("storage", syncStorage);
   }, []);
+
+  useEffect(() => {
+    persistParticipantScriptRegistry(participantScripts);
+  }, [participantScripts]);
 
   useEffect(() => {
     async function updateActiveLockHash() {
@@ -68,7 +85,13 @@ export function useProductWorkspace() {
 
       try {
         const address = await walletState.activeSigner.getRecommendedAddressObj();
-        setActiveLockHash(ccc.Script.from(address.script).hash());
+        const normalizedScript = ccc.Script.from(address.script);
+        const lockHash = normalizedScript.hash();
+        setActiveLockHash(lockHash);
+        setParticipantScripts((current) => ({
+          ...current,
+          [lockHash]: storedScriptFromScriptLike(normalizedScript),
+        }));
       } catch {
         setActiveLockHash(null);
       }
@@ -129,6 +152,18 @@ export function useProductWorkspace() {
     [deployment, walletState.activeSigner],
   );
 
+  const saveParticipantScript = useCallback((lockHash: string, script: { codeHash: string; hashType: "type" | "data" | "data1" | "data2"; args: string; label?: string }) => {
+    setParticipantScripts((current) => ({
+      ...current,
+      [lockHash]: {
+        codeHash: script.codeHash.startsWith("0x") ? script.codeHash : `0x${script.codeHash}`,
+        hashType: script.hashType,
+        args: script.args.startsWith("0x") ? script.args : `0x${script.args}`,
+        ...(script.label ? { label: script.label } : {}),
+      },
+    }));
+  }, []);
+
   return {
     walletState,
     setActiveSigner: (signer: ccc.Signer | null) =>
@@ -142,5 +177,7 @@ export function useProductWorkspace() {
     status,
     activeLockHash,
     service,
+    participantScripts,
+    saveParticipantScript,
   };
 }

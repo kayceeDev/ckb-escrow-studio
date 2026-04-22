@@ -5,14 +5,100 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, CalendarClock, CircleHelp, RefreshCcw, Scale, ShieldCheck, Store, Wallet } from "lucide-react";
 
 import { formatEscrowError } from "../error-format";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui";
-import { getEscrowById, productEscrows } from "./mock-data";
-import { ProductEscrowRecord, toLiveProductEscrow, toSeedProductEscrow } from "./contract";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "../components/ui";
+import { getEscrowById } from "./mock-data";
+import { ProductActionView, ProductEscrowRecord, toLiveProductEscrow, toSeedProductEscrow } from "./contract";
+import { type StoredParticipantScript } from "./registry";
 import { createEscrowInput } from "./utils";
 import { useProductWorkspace } from "./useProductWorkspace";
 
 function ActionBadge({ source }: { source: ProductEscrowRecord["source"] }) {
   return <Badge variant={source === "live" ? "success" : "outline"}>{source === "live" ? "Live escrow" : "Preview escrow"}</Badge>;
+}
+
+function ParticipantScriptEditor({
+  title,
+  lockHash,
+  storedScript,
+  onSave,
+}: {
+  title: string;
+  lockHash: string;
+  storedScript: StoredParticipantScript | undefined;
+  onSave: (lockHash: string, script: StoredParticipantScript) => void;
+}) {
+  const [codeHash, setCodeHash] = useState(storedScript?.codeHash ?? "");
+  const [args, setArgs] = useState(storedScript?.args ?? "0x");
+  const [hashType, setHashType] = useState<StoredParticipantScript["hashType"]>(storedScript?.hashType ?? "type");
+
+  return (
+    <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-medium text-foreground">{title}</p>
+          <p className="text-xs text-muted-foreground break-all">{lockHash}</p>
+        </div>
+        <Badge variant={storedScript ? "success" : "outline"}>{storedScript ? "Script saved" : "Script missing"}</Badge>
+      </div>
+
+      <div className="grid gap-3">
+        <div className="space-y-2">
+          <Label>Code hash</Label>
+          <Input value={codeHash} onChange={(event) => setCodeHash(event.target.value)} placeholder="0x..." />
+        </div>
+        <div className="space-y-2">
+          <Label>Hash type</Label>
+          <select
+            value={hashType}
+            onChange={(event) => setHashType(event.target.value as StoredParticipantScript["hashType"])}
+            className="flex h-11 w-full rounded-2xl border border-border bg-white px-4 text-sm text-foreground outline-none ring-0 transition focus:border-primary/40"
+          >
+            <option value="type">type</option>
+            <option value="data">data</option>
+            <option value="data1">data1</option>
+            <option value="data2">data2</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label>Args</Label>
+          <Input value={args} onChange={(event) => setArgs(event.target.value)} placeholder="0x..." />
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => onSave(lockHash, { codeHash, hashType, args, label: title })}
+          disabled={!codeHash || !args}
+        >
+          Save {title} script
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function canExecuteInProduct(
+  action: ProductActionView,
+  record: ProductEscrowRecord,
+  participantScripts: Record<string, StoredParticipantScript>,
+  hasService: boolean,
+  isLive: boolean,
+): boolean {
+  if (!isLive || !hasService || !action.enabled) {
+    return false;
+  }
+
+  switch (action.action) {
+    case "Deliver":
+    case "Dispute":
+    case "Cancel":
+      return true;
+    case "Complete":
+    case "ResolveToSeller":
+      return Boolean(participantScripts[record.sellerLockHash]);
+    case "ResolveToBuyer":
+      return Boolean(participantScripts[record.buyerLockHash]);
+    default:
+      return false;
+  }
 }
 
 export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
@@ -26,6 +112,8 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     isFetchingEscrows,
     activeLockHash,
     service,
+    participantScripts,
+    saveParticipantScript,
   } = useProductWorkspace();
   const [status, setStatus] = useState<string>("Idle");
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -43,8 +131,8 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     return null;
   }, [activeLockHash, liveItem, seeded]);
 
-  async function runDirectAction(action: "Deliver" | "Dispute" | "Cancel") {
-    if (!service || !liveItem) {
+  async function runAction(action: ProductActionView["action"]) {
+    if (!service || !liveItem || !record) {
       return;
     }
 
@@ -52,12 +140,45 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       setBusyAction(action);
       setStatus(`${action} in progress...`);
       const cell = createEscrowInput(liveItem, deployment);
-      const txHash =
-        action === "Deliver"
-          ? await service.sendDeliver(cell)
-          : action === "Dispute"
-            ? await service.sendDispute(cell)
-            : await service.sendCancel(cell);
+      let txHash = "";
+
+      switch (action) {
+        case "Deliver":
+          txHash = await service.sendDeliver(cell);
+          break;
+        case "Dispute":
+          txHash = await service.sendDispute(cell);
+          break;
+        case "Cancel":
+          txHash = await service.sendCancel(cell);
+          break;
+        case "Complete": {
+          const sellerLock = participantScripts[record.sellerLockHash];
+          if (!sellerLock) {
+            throw new Error("Seller lock script is missing. Save it below before releasing funds.");
+          }
+          txHash = await service.sendComplete({ escrowInput: cell, sellerLock });
+          break;
+        }
+        case "ResolveToBuyer": {
+          const buyerLock = participantScripts[record.buyerLockHash];
+          if (!buyerLock) {
+            throw new Error("Buyer lock script is missing. Save it below before resolving to the buyer.");
+          }
+          txHash = await service.sendResolveToBuyer({ escrowInput: cell, recipientLock: buyerLock });
+          break;
+        }
+        case "ResolveToSeller": {
+          const sellerLock = participantScripts[record.sellerLockHash];
+          if (!sellerLock) {
+            throw new Error("Seller lock script is missing. Save it below before resolving to the seller.");
+          }
+          txHash = await service.sendResolveToSeller({ escrowInput: cell, recipientLock: sellerLock });
+          break;
+        }
+        default:
+          throw new Error(`${action} still requires Studio support.`);
+      }
 
       setLastTxHash(txHash);
       setStatus(`${action} submitted.`);
@@ -212,40 +333,46 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                 No actions are available for this wallet in the current escrow state.
               </div>
             ) : (
-              record.actions.map((action) => (
-                <div key={action.action} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-foreground">{action.label}</p>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{action.description}</p>
+              record.actions.map((action) => {
+                const inProduct = canExecuteInProduct(
+                  action,
+                  record,
+                  participantScripts,
+                  Boolean(service),
+                  record.source === "live",
+                );
+
+                return (
+                  <div key={action.action} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-foreground">{action.label}</p>
+                        <p className="mt-1 text-sm leading-6 text-muted-foreground">{action.description}</p>
+                      </div>
+                      <Badge variant={inProduct ? "success" : "outline"}>{inProduct ? "In product" : "Studio"}</Badge>
                     </div>
-                    <Badge variant={action.mode === "direct" ? "success" : "outline"}>{action.mode === "direct" ? "In product" : "Studio"}</Badge>
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    {record.source === "live" && service && action.mode === "direct" && (action.action === "Deliver" || action.action === "Dispute" || action.action === "Cancel") ? (
-                      <Button disabled={busyAction !== null || !action.enabled} onClick={() => {
-                          if (action.action === "Deliver" || action.action === "Dispute" || action.action === "Cancel") {
-                            void runDirectAction(action.action);
-                          }
-                        }}>
-                        {busyAction === action.action ? "Submitting..." : action.label}
+                    <div className="flex flex-wrap gap-3">
+                      {inProduct ? (
+                        <Button disabled={busyAction !== null || !action.enabled} onClick={() => void runAction(action.action)}>
+                          {busyAction === action.action ? "Submitting..." : action.label}
+                        </Button>
+                      ) : null}
+                      <Button asChild variant="outline">
+                        <Link href="/studio">
+                          {inProduct ? "Advanced controls" : "Open in Studio"}
+                          <ArrowRight className="h-4 w-4" />
+                        </Link>
                       </Button>
-                    ) : null}
-                    <Button asChild variant="outline">
-                      <Link href="/studio">
-                        {action.mode === "studio" ? "Open in Studio" : "Advanced controls"}
-                        <ArrowRight className="h-4 w-4" />
-                      </Link>
-                    </Button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
 
             <div className="rounded-[1.25rem] border border-dashed border-primary/25 bg-primary/5 p-4 text-sm leading-6 text-muted-foreground">
-              <div className="mb-2 flex items-center gap-2 text-primary"><AlertTriangle className="h-4 w-4" /><strong>Why some actions still open Studio</strong></div>
+              <div className="mb-2 flex items-center gap-2 text-primary"><AlertTriangle className="h-4 w-4" /><strong>Why lock scripts matter</strong></div>
               <p>
-                The contract stores participant <strong className="text-foreground">lock hashes</strong> on chain. Settlement actions like release, refund, and dispute resolution sometimes still need full recipient lock scripts or reference header data off chain, so the product links you to Studio instead of pretending it can finish that flow blindly.
+                The contract stores participant <strong className="text-foreground">lock hashes</strong> on chain. Settlement actions like release and dispute resolution need the recipient's full lock script off chain, so the product keeps a local registry of those scripts instead of guessing.
               </p>
             </div>
 
@@ -254,6 +381,35 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
               <p className="mt-2">{status}</p>
               {lastTxHash ? <p className="mt-2 break-all text-xs">Last transaction: {lastTxHash}</p> : null}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <CardTitle>Participant lock scripts</CardTitle>
+            <CardDescription>
+              Save the full buyer, seller, or arbitrator lock script here so settlement actions can be built directly from the product surface.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-3">
+            <ParticipantScriptEditor
+              title={record.buyerLabel}
+              lockHash={record.buyerLockHash}
+              storedScript={participantScripts[record.buyerLockHash]}
+              onSave={saveParticipantScript}
+            />
+            <ParticipantScriptEditor
+              title={record.sellerLabel}
+              lockHash={record.sellerLockHash}
+              storedScript={participantScripts[record.sellerLockHash]}
+              onSave={saveParticipantScript}
+            />
+            <ParticipantScriptEditor
+              title={record.arbitratorLabel}
+              lockHash={record.arbitratorLockHash}
+              storedScript={participantScripts[record.arbitratorLockHash]}
+              onSave={saveParticipantScript}
+            />
           </CardContent>
         </Card>
       </div>
