@@ -7,8 +7,11 @@ import {
   CheckCircle2,
   Dot,
   HandCoins,
+  LayoutPanelTop,
+  LockKeyhole,
   ShieldCheck,
   Sparkles,
+  Store,
   TimerReset,
   Wallet,
 } from "lucide-react";
@@ -22,7 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui";
-import { productEscrows } from "./mock-data";
+import { buyerHighlights, productEscrows } from "./mock-data";
 
 export function ProductHome() {
   return (
@@ -41,10 +44,10 @@ export function ProductHome() {
 
             <div className="space-y-4">
               <h1 className="max-w-4xl font-serif text-4xl font-semibold tracking-tight text-balance md:text-7xl">
-                A calm, trusted place to hold funds until work or goods are truly delivered.
+                Escrow that feels trustworthy enough for real work, not just a wallet demo.
               </h1>
               <p className="max-w-3xl text-base leading-8 text-muted-foreground md:text-lg">
-                Create escrow for known parties, use the platform arbitrator by default, and keep every payment path explicit on CKB. No noisy marketplace clutter. Just escrow, delivery, dispute, and release.
+                Create escrow for known parties, choose a seller, set a deadline, and release funds only when delivery is real. No marketplace noise. No hidden admin balances. Just a focused escrow workflow on CKB.
               </p>
             </div>
 
@@ -66,20 +69,7 @@ export function ProductHome() {
             </div>
 
             <div className="grid gap-3 md:grid-cols-3">
-              {[
-                {
-                  title: "Simple setup",
-                  body: "Buyer connects wallet, enters seller, chooses deadline, and funds the escrow.",
-                },
-                {
-                  title: "Platform arbitrator",
-                  body: "Start with a trusted default arbitrator or switch to a custom one when needed.",
-                },
-                {
-                  title: "Clear state changes",
-                  body: "Funded, delivered, disputed, refunded, and resolved are visible without protocol jargon.",
-                },
-              ].map((item) => (
+              {buyerHighlights.map((item) => (
                 <div
                   key={item.title}
                   className="rounded-[1.5rem] border border-border bg-white/70 p-4"
@@ -110,10 +100,10 @@ export function ProductHome() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-primary" />
-              Why This Exists
+              Product Promise
             </CardTitle>
             <CardDescription>
-              This product is not a marketplace. It is a dedicated escrow workflow for real deals between known parties.
+              This is a standalone escrow app for real agreements between people who already know each other.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
@@ -137,6 +127,13 @@ export function ProductHome() {
                 <span className="text-sm font-semibold">Deadline-aware refunds</span>
               </div>
               <p className="text-sm text-muted-foreground">Refund logic is tied to the escrow deadline and enforced by the contract.</p>
+            </div>
+            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+              <div className="mb-2 flex items-center gap-2 text-primary">
+                <LockKeyhole className="h-4 w-4" />
+                <span className="text-sm font-semibold">No hidden custody</span>
+              </div>
+              <p className="text-sm text-muted-foreground">Funds are held in the escrow cell logic, not treated like an opaque web2 balance.</p>
             </div>
           </CardContent>
         </Card>
@@ -169,6 +166,38 @@ export function ProductHome() {
             </CardHeader>
             <CardContent>
               <p className="text-sm leading-6 text-muted-foreground">{step.body}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+
+      <section className="mb-12 grid gap-4 md:grid-cols-3">
+        {[
+          {
+            title: "For Buyers",
+            body: "Create escrow, monitor delivery, release funds, dispute, or refund after deadline.",
+            icon: <LayoutPanelTop className="h-5 w-5 text-primary" />,
+          },
+          {
+            title: "For Sellers",
+            body: "See whether payment is locked, then mark delivered when the work is actually done.",
+            icon: <Store className="h-5 w-5 text-primary" />,
+          },
+          {
+            title: "For Arbitrators",
+            body: "Resolve only the escrows that have escalated into explicit disputes.",
+            icon: <ShieldCheck className="h-5 w-5 text-primary" />,
+          },
+        ].map((item) => (
+          <Card key={item.title}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                {item.icon}
+                {item.title}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm leading-6 text-muted-foreground">{item.body}</p>
             </CardContent>
           </Card>
         ))}

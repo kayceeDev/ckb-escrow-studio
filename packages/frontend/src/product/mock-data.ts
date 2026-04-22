@@ -70,3 +70,18 @@ export const productEscrows: ProductEscrowRecord[] = [
 export function getEscrowById(id: string): ProductEscrowRecord | undefined {
   return productEscrows.find((escrow) => escrow.id === id);
 }
+
+export const buyerHighlights = [
+  {
+    title: "Know who holds the leverage",
+    body: "Funds stay on-chain in escrow until the delivery path is satisfied, not in a private admin balance.",
+  },
+  {
+    title: "Use a default arbitrator",
+    body: "Start with a platform arbitrator for simpler disputes, then move to custom arbitrators later if your workflow needs it.",
+  },
+  {
+    title: "See state clearly",
+    body: "Funded, delivered, disputed, refunded, and resolved are presented as product states, not protocol jargon.",
+  },
+];
