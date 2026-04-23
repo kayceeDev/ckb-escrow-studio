@@ -104,7 +104,8 @@ function canExecuteInProduct(
 export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const {
     walletState,
-    setActiveSigner,
+    connectSigner,
+    disconnectSigner,
     deployment,
     deploymentReady,
     escrows,
@@ -286,13 +287,13 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                   <div className="flex flex-wrap gap-2">
                     {wallet.signers.map((signerInfo) => (
                       <Button
-                        key={`${wallet.name}-${signerInfo.name}`}
+                        key={`${wallet.name}-${walletState.activeSigner === signerInfo.signer ? ` connected` : `Connect `}`}
                         size="sm"
                         variant={walletState.activeSigner === signerInfo.signer ? "default" : "outline"}
-                        onClick={() => setActiveSigner(signerInfo.signer)}
+                        onClick={() => void connectSigner(signerInfo.signer)}
                       >
                         <Wallet className="h-4 w-4" />
-                        {signerInfo.name}
+                        {walletState.activeSigner === signerInfo.signer ? ` connected` : `Connect `}
                       </Button>
                     ))}
                   </div>

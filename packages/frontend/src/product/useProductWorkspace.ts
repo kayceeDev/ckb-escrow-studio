@@ -11,18 +11,49 @@ import {
   persistParticipantScriptRegistry,
   storedScriptFromScriptLike,
   type ParticipantScriptRegistry,
+  type StoredParticipantScript,
 } from "./registry";
-import { fetchEscrowCellsByType, initialDeployment, loadStoredState, STORAGE_KEYS, testnetClient } from "../studio";
+import { fetchEscrowCellsByType, initialDeployment, loadStoredState, STORAGE_KEYS } from "../studio";
 import type { DeploymentFormState, EscrowListItem, WalletState } from "../types";
+
+export type ProductNetwork = "testnet" | "mainnet";
+
+const PRODUCT_STORAGE_KEYS = {
+  network: "ckb-escrow:product-network",
+  mainnetDeployment: "ckb-escrow:deployment-mainnet",
+} as const;
+
+const NETWORK_CLIENTS: Record<ProductNetwork, ccc.Client> = {
+  testnet: new ccc.ClientPublicTestnet(),
+  mainnet: new ccc.ClientPublicMainnet(),
+};
 
 function isDeploymentReady(deployment: DeploymentFormState): boolean {
   return Boolean(deployment.codeHash && deployment.depTxHash);
 }
 
+function loadNetwork(): ProductNetwork {
+  if (typeof window === "undefined") {
+    return "testnet";
+  }
+
+  const raw = window.localStorage.getItem(PRODUCT_STORAGE_KEYS.network);
+  return raw === "mainnet" ? "mainnet" : "testnet";
+}
+
+function loadDeploymentForNetwork(network: ProductNetwork): DeploymentFormState {
+  if (network === "testnet") {
+    return loadStoredState(STORAGE_KEYS.deployment, initialDeployment);
+  }
+
+  return loadStoredState(PRODUCT_STORAGE_KEYS.mainnetDeployment, initialDeployment);
+}
+
 export function useProductWorkspace() {
+  const [network, setNetworkState] = useState<ProductNetwork>(() => loadNetwork());
   const [walletState, setWalletState] = useState<WalletState>({ wallets: [], activeSigner: null });
   const [deployment, setDeployment] = useState<DeploymentFormState>(() =>
-    loadStoredState(STORAGE_KEYS.deployment, initialDeployment),
+    loadDeploymentForNetwork(loadNetwork()),
   );
   const [escrows, setEscrows] = useState<EscrowListItem[]>([]);
   const [isFetchingEscrows, setIsFetchingEscrows] = useState(false);
@@ -33,44 +64,58 @@ export function useProductWorkspace() {
   );
   const controllerRef = useRef<ccc.SignersController | null>(null);
 
+  const client = useMemo(() => NETWORK_CLIENTS[network], [network]);
+
+  const refreshWallets = useCallback(async () => {
+    if (!controllerRef.current) {
+      return;
+    }
+
+    setStatus(`Refreshing ${network} wallets...`);
+    controllerRef.current.disconnect();
+    await controllerRef.current.refresh(client, (wallets) => {
+      setWalletState((current) => ({
+        wallets,
+        activeSigner:
+          current.activeSigner &&
+          wallets.some((wallet) =>
+            wallet.signers.some((signerInfo) => signerInfo.signer === current.activeSigner),
+          )
+            ? current.activeSigner
+            : null,
+      }));
+    });
+    setStatus(`Wallet discovery finished for ${network}.`);
+  }, [client, network]);
+
   useEffect(() => {
     const controller = new ccc.SignersController();
     controllerRef.current = controller;
-
-    async function refreshWallets() {
-      setStatus("Refreshing wallets...");
-      await controller.refresh(testnetClient, (wallets) => {
-        setWalletState((current) => ({
-          wallets,
-          activeSigner:
-            current.activeSigner &&
-            wallets.some((wallet) =>
-              wallet.signers.some((signerInfo) => signerInfo.signer === current.activeSigner),
-            )
-              ? current.activeSigner
-              : null,
-        }));
-      });
-      setStatus("Wallet discovery finished.");
-    }
-
     void refreshWallets();
     return () => controller.disconnect();
-  }, []);
+  }, [refreshWallets]);
 
   useEffect(() => {
     function syncStorage(event: StorageEvent) {
-      if (event.key === STORAGE_KEYS.deployment) {
+      if (event.key === STORAGE_KEYS.deployment && network === "testnet") {
         setDeployment(loadStoredState(STORAGE_KEYS.deployment, initialDeployment));
+      }
+      if (event.key === PRODUCT_STORAGE_KEYS.mainnetDeployment && network === "mainnet") {
+        setDeployment(loadStoredState(PRODUCT_STORAGE_KEYS.mainnetDeployment, initialDeployment));
       }
       if (event.key === PARTICIPANT_SCRIPT_STORAGE_KEY) {
         setParticipantScripts(loadParticipantScriptRegistry());
+      }
+      if (event.key === PRODUCT_STORAGE_KEYS.network) {
+        const nextNetwork = loadNetwork();
+        setNetworkState(nextNetwork);
+        setDeployment(loadDeploymentForNetwork(nextNetwork));
       }
     }
 
     window.addEventListener("storage", syncStorage);
     return () => window.removeEventListener("storage", syncStorage);
-  }, []);
+  }, [network]);
 
   useEffect(() => {
     persistParticipantScriptRegistry(participantScripts);
@@ -100,19 +145,6 @@ export function useProductWorkspace() {
     void updateActiveLockHash();
   }, [walletState.activeSigner]);
 
-  const refreshWallets = useCallback(async () => {
-    if (!controllerRef.current) {
-      return;
-    }
-
-    setStatus("Refreshing wallets...");
-    controllerRef.current.disconnect();
-    await controllerRef.current.refresh(testnetClient, (wallets) => {
-      setWalletState((current) => ({ ...current, wallets }));
-    });
-    setStatus("Wallet refresh finished.");
-  }, []);
-
   const refreshEscrows = useCallback(async () => {
     if (!isDeploymentReady(deployment)) {
       setEscrows([]);
@@ -121,16 +153,16 @@ export function useProductWorkspace() {
 
     try {
       setIsFetchingEscrows(true);
-      setStatus("Fetching escrow cells...");
-      const fetched = await fetchEscrowCellsByType(deployment, 48);
+      setStatus(`Fetching ${network} escrow cells...`);
+      const fetched = await fetchEscrowCellsByType(deployment, 48, client);
       setEscrows(fetched);
-      setStatus(`Fetched ${fetched.length} escrow cell(s).`);
+      setStatus(`Fetched ${fetched.length} ${network} escrow cell(s).`);
     } catch (error) {
       setStatus(`Escrow fetch failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsFetchingEscrows(false);
     }
-  }, [deployment]);
+  }, [client, deployment, network]);
 
   useEffect(() => {
     if (isDeploymentReady(deployment)) {
@@ -152,7 +184,45 @@ export function useProductWorkspace() {
     [deployment, walletState.activeSigner],
   );
 
-  const saveParticipantScript = useCallback((lockHash: string, script: { codeHash: string; hashType: "type" | "data" | "data1" | "data2"; args: string; label?: string }) => {
+  const connectSigner = useCallback(async (signer: ccc.Signer) => {
+    try {
+      setStatus("Connecting wallet...");
+      await signer.connect();
+      setWalletState((current) => ({ ...current, activeSigner: signer }));
+      setStatus("Wallet connected.");
+    } catch (error) {
+      setStatus(`Wallet connect failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, []);
+
+  const disconnectSigner = useCallback(async () => {
+    if (!walletState.activeSigner) {
+      return;
+    }
+
+    try {
+      setStatus("Disconnecting wallet...");
+      await walletState.activeSigner.disconnect();
+      setWalletState((current) => ({ ...current, activeSigner: null }));
+      setActiveLockHash(null);
+      setStatus("Wallet disconnected.");
+    } catch (error) {
+      setStatus(`Wallet disconnect failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [walletState.activeSigner]);
+
+  const setNetwork = useCallback((nextNetwork: ProductNetwork) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(PRODUCT_STORAGE_KEYS.network, nextNetwork);
+    }
+    setNetworkState(nextNetwork);
+    setDeployment(loadDeploymentForNetwork(nextNetwork));
+    setEscrows([]);
+    setWalletState({ wallets: [], activeSigner: null });
+    setActiveLockHash(null);
+  }, []);
+
+  const saveParticipantScript = useCallback((lockHash: string, script: StoredParticipantScript) => {
     setParticipantScripts((current) => ({
       ...current,
       [lockHash]: {
@@ -165,9 +235,12 @@ export function useProductWorkspace() {
   }, []);
 
   return {
+    network,
+    setNetwork,
+    client,
     walletState,
-    setActiveSigner: (signer: ccc.Signer | null) =>
-      setWalletState((current) => ({ ...current, activeSigner: signer })),
+    connectSigner,
+    disconnectSigner,
     refreshWallets,
     deployment,
     deploymentReady: isDeploymentReady(deployment),

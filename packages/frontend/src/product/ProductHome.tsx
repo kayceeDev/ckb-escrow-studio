@@ -4,7 +4,9 @@ import Link from "next/link";
 import {
   ArrowRight,
   CheckCircle2,
+  Globe,
   LayoutPanelTop,
+  PlugZap,
   RefreshCcw,
   ShieldCheck,
   Store,
@@ -29,8 +31,11 @@ function SectionHeader({ title, body }: { title: string; body: string }) {
 
 export function ProductHome() {
   const {
+    network,
+    setNetwork,
     walletState,
-    setActiveSigner,
+    connectSigner,
+    disconnectSigner,
     refreshWallets,
     deploymentReady,
     escrows,
@@ -56,14 +61,15 @@ export function ProductHome() {
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant="success" className="w-fit">Standalone Escrow</Badge>
               <Badge variant="secondary" className="w-fit">Known parties only</Badge>
+              <Badge variant="outline" className="w-fit capitalize">{network}</Badge>
             </div>
 
             <div className="space-y-4">
               <h1 className="max-w-4xl font-serif text-4xl font-semibold tracking-tight text-balance md:text-7xl">
-                Discover the escrows you belong to, connect the right wallet, and take the exact action the contract allows.
+                Connect a real wallet, switch between testnet and mainnet, and discover the escrows your role can actually move.
               </h1>
               <p className="max-w-3xl text-base leading-8 text-muted-foreground md:text-lg">
-                Buyers, sellers, and arbitrators should all see the same escrow from their own role. The product dashboard now follows the contract state machine instead of assuming the buyer is the only actor.
+                Buyers, sellers, and arbitrators should all see the same escrow from their own role. The product now treats wallet connection and network selection as first-class flow, not hidden studio assumptions.
               </p>
             </div>
 
@@ -94,19 +100,38 @@ export function ProductHome() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Wallet className="h-5 w-5 text-primary" />
-              Wallet & Discovery
+              Wallet, Network & Discovery
             </CardTitle>
             <CardDescription>
-              Connect a signer to classify escrows as buyer, seller, or arbitrator. Without a signer, the dashboard stays public and read-only.
+              Choose the chain first, then connect the signer that should map to buyer, seller, or arbitrator for the current escrow set.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setNetwork("testnet")}
+                className={`rounded-[1.25rem] border p-4 text-left transition ${network === "testnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
+              >
+                <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Testnet</span></div>
+                <p className="text-sm text-muted-foreground">Use `ckt` addresses, faucet funds, and testnet deployment profiles.</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNetwork("mainnet")}
+                className={`rounded-[1.25rem] border p-4 text-left transition ${network === "mainnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
+              >
+                <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Mainnet</span></div>
+                <p className="text-sm text-muted-foreground">Use `ckb` addresses and only switch here after you have a real mainnet deployment profile.</p>
+              </button>
+            </div>
+
             <div className="flex flex-wrap gap-2">
               <Badge variant={walletState.activeSigner ? "success" : "outline"}>
                 {walletState.activeSigner ? "Wallet connected" : "No signer selected"}
               </Badge>
               <Badge variant={deploymentReady ? "success" : "destructive"}>
-                {deploymentReady ? "Deployment ready" : "Load deployment in Studio"}
+                {deploymentReady ? `${network} deployment ready` : `No ${network} deployment`}
               </Badge>
             </div>
             <div className="rounded-[1.25rem] border border-border bg-white/75 p-4 text-sm text-muted-foreground">
@@ -125,6 +150,11 @@ export function ProductHome() {
                 <LayoutPanelTop className="h-4 w-4" />
                 {isFetchingEscrows ? "Refreshing escrows" : "Refresh escrows"}
               </Button>
+              {walletState.activeSigner ? (
+                <Button variant="outline" onClick={() => void disconnectSigner()}>
+                  Disconnect wallet
+                </Button>
+              ) : null}
             </div>
             <div className="space-y-3">
               {walletState.wallets.length === 0 ? (
@@ -132,19 +162,28 @@ export function ProductHome() {
               ) : (
                 walletState.wallets.map((wallet) => (
                   <div key={wallet.name} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                    <strong>{wallet.name}</strong>
-                    <p className="mb-3 mt-1 text-sm text-muted-foreground">{wallet.signers.length} signer(s)</p>
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <strong>{wallet.name}</strong>
+                        <p className="mt-1 text-sm text-muted-foreground">{wallet.signers.length} signer(s)</p>
+                      </div>
+                      <Badge variant="outline">{network}</Badge>
+                    </div>
                     <div className="flex flex-wrap gap-2">
-                      {wallet.signers.map((signerInfo) => (
-                        <Button
-                          key={`${wallet.name}-${signerInfo.name}`}
-                          variant={walletState.activeSigner === signerInfo.signer ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setActiveSigner(signerInfo.signer)}
-                        >
-                          {signerInfo.name}
-                        </Button>
-                      ))}
+                      {wallet.signers.map((signerInfo) => {
+                        const connected = walletState.activeSigner === signerInfo.signer;
+                        return (
+                          <Button
+                            key={`${wallet.name}-${signerInfo.name}`}
+                            variant={connected ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => void connectSigner(signerInfo.signer)}
+                          >
+                            <PlugZap className="h-4 w-4" />
+                            {connected ? `${signerInfo.name} connected` : `Connect ${signerInfo.name}`}
+                          </Button>
+                        );
+                      })}
                     </div>
                   </div>
                 ))
@@ -181,9 +220,9 @@ export function ProductHome() {
           <Card>
             <CardContent className="flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-lg font-semibold">Load a deployment profile first</p>
+                <p className="text-lg font-semibold">Load a {network} deployment profile first</p>
                 <p className="text-sm text-muted-foreground">
-                  The product dashboard can discover real escrows only after the escrow type script is loaded in Studio.
+                  The product dashboard can discover real escrows only after the escrow type script for this network is available. Studio currently manages the testnet path directly.
                 </p>
               </div>
               <Button asChild variant="outline">
@@ -196,7 +235,7 @@ export function ProductHome() {
             <CardContent className="space-y-3 p-6 text-sm text-muted-foreground">
               <p className="text-lg font-semibold text-foreground">No connected-role escrows yet</p>
               <p>
-                If you already selected a wallet, it does not match any of the fetched escrow participant hashes yet. Buyers, sellers, and arbitrators will each see their own role here once the lock hashes line up.
+                If you already connected a wallet, it does not match any of the fetched participant hashes on {network} yet. Buyers, sellers, and arbitrators will each see their own role here once the lock hashes line up.
               </p>
             </CardContent>
           </Card>
@@ -287,12 +326,12 @@ export function ProductHome() {
           },
           {
             title: "For Sellers",
-            body: "Sellers can finally discover their own escrows and mark delivery from the same product surface instead of relying only on studio tools.",
+            body: "Sellers can discover their escrows on both testnet and mainnet and connect the correct wallet before marking delivery.",
             icon: <Store className="h-5 w-5 text-primary" />,
           },
           {
             title: "For Arbitrators",
-            body: "Arbitrators see disputed escrows they belong to and can identify which resolutions still need recipient lock details.",
+            body: "Arbitrators see disputed escrows they belong to and can resolve them once the recipient lock scripts are available.",
             icon: <ShieldCheck className="h-5 w-5 text-primary" />,
           },
         ].map((item) => (

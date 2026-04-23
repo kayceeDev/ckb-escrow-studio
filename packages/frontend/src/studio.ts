@@ -238,10 +238,11 @@ export function parseStudioSnapshot(raw: string): StudioSnapshot {
 export async function fetchEscrowCellsByType(
   deployment: DeploymentFormState,
   limit = 12,
+  client: ccc.Client = testnetClient,
 ): Promise<EscrowListItem[]> {
   const items: EscrowListItem[] = [];
 
-  for await (const cell of testnetClient.findCellsByType(makeTypeScript(deployment), true, "desc", limit)) {
+  for await (const cell of client.findCellsByType(makeTypeScript(deployment), true, "desc", limit)) {
     try {
       items.push({
         txHash: cell.outPoint.txHash,
