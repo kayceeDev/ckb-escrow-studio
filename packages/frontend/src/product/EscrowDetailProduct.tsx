@@ -10,7 +10,7 @@ import { getEscrowById } from "./mock-data";
 import { ProductActionView, ProductEscrowRecord, toLiveProductEscrow, toSeedProductEscrow } from "./contract";
 import { type StoredParticipantScript } from "./registry";
 import { createEscrowInput } from "./utils";
-import { useProductWorkspace } from "./useProductWorkspace";
+import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
 function ActionBadge({ source }: { source: ProductEscrowRecord["source"] }) {
   return <Badge variant={source === "live" ? "success" : "outline"}>{source === "live" ? "Live escrow" : "Preview escrow"}</Badge>;
@@ -115,7 +115,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     service,
     participantScripts,
     saveParticipantScript,
-  } = useProductWorkspace();
+  } = useProductWorkspaceContext();
   const [status, setStatus] = useState<string>("Idle");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [lastTxHash, setLastTxHash] = useState<string>("");

@@ -32,7 +32,7 @@ import {
 } from "../components/ui";
 import { formatEscrowError } from "../error-format";
 import { storedScriptFromScriptLike } from "./registry";
-import { useProductWorkspace } from "./useProductWorkspace";
+import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
 function parseCkbToShannons(value: string): bigint {
   const normalized = value.trim();
@@ -58,7 +58,7 @@ export function CreateEscrowProduct() {
     service,
     status: workspaceStatus,
     saveParticipantScript,
-  } = useProductWorkspace();
+  } = useProductWorkspaceContext();
   const [useCustomArbitrator, setUseCustomArbitrator] = useState(false);
   const [sellerAddress, setSellerAddress] = useState("");
   const [amountCkb, setAmountCkb] = useState("350");

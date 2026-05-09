@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, MoveRight, ShieldCheck, X } from "lucide-react";
+import { Globe, Menu, MoveRight, PlugZap, ShieldCheck, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { useProductWorkspaceContext } from "../product/ProductWorkspaceContext";
 import { cn } from "../lib/utils";
 import { Badge, Button, Card, CardContent } from "./ui";
 
@@ -15,6 +16,7 @@ interface MobileNavProps {
 export function MobileNav({ items }: MobileNavProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { network, setNetwork, walletState, connectSigner, disconnectSigner } = useProductWorkspaceContext();
 
   useEffect(() => {
     setOpen(false);
@@ -31,6 +33,14 @@ export function MobileNav({ items }: MobileNavProps) {
       document.body.style.overflow = originalOverflow;
     };
   }, [open]);
+
+  const signerOptions = walletState.wallets.flatMap((wallet) =>
+    wallet.signers.map((signerInfo) => ({
+      walletName: wallet.name,
+      signerName: signerInfo.name,
+      signer: signerInfo.signer,
+    })),
+  );
 
   const links = useMemo(
     () =>
@@ -114,6 +124,61 @@ export function MobileNav({ items }: MobileNavProps) {
               <div className="rounded-full bg-primary/10 p-2 text-primary">
                 <ShieldCheck className="h-4 w-4" />
               </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setNetwork("testnet")}
+                className={`rounded-[1.1rem] border p-3 text-left transition ${network === "testnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
+              >
+                <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Testnet</span></div>
+                <p className="text-xs text-muted-foreground">Use `ckt` addresses and test deployment.</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNetwork("mainnet")}
+                className={`rounded-[1.1rem] border p-3 text-left transition ${network === "mainnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
+              >
+                <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Mainnet</span></div>
+                <p className="text-xs text-muted-foreground">Use `ckb` addresses and main deployment.</p>
+              </button>
+            </div>
+
+            <div className="space-y-3 rounded-[1.25rem] border border-border/70 bg-white/80 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Wallet</p>
+                  <p className="text-xs text-muted-foreground">
+                    {walletState.activeSigner ? "Connected signer ready" : "Connect a signer to unlock role-based actions"}
+                  </p>
+                </div>
+                <Badge variant={walletState.activeSigner ? "success" : "outline"}>
+                  {walletState.activeSigner ? "Connected" : "Not connected"}
+                </Badge>
+              </div>
+
+              {walletState.activeSigner ? (
+                <Button variant="outline" className="w-full" onClick={() => void disconnectSigner()}>
+                  Disconnect wallet
+                </Button>
+              ) : signerOptions.length > 0 ? (
+                <div className="space-y-2">
+                  {signerOptions.slice(0, 3).map((option) => (
+                    <Button
+                      key={`${option.walletName}-${option.signerName}`}
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => void connectSigner(option.signer)}
+                    >
+                      <PlugZap className="h-4 w-4" />
+                      {option.signerName}
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No wallet signers discovered yet. Refresh or install a compatible wallet.</p>
+              )}
             </div>
 
             <div className="space-y-3">{links}</div>

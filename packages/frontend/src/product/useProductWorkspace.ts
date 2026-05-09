@@ -49,6 +49,8 @@ function loadDeploymentForNetwork(network: ProductNetwork): DeploymentFormState 
   return loadStoredState(PRODUCT_STORAGE_KEYS.mainnetDeployment, initialDeployment);
 }
 
+export type ProductWorkspaceValue = ReturnType<typeof useProductWorkspace>;
+
 export function useProductWorkspace() {
   const [network, setNetworkState] = useState<ProductNetwork>(() => loadNetwork());
   const [walletState, setWalletState] = useState<WalletState>({ wallets: [], activeSigner: null });

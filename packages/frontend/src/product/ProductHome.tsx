@@ -16,7 +16,7 @@ import {
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui";
 import { buyerHighlights, productEscrows } from "./mock-data";
 import { toLiveProductEscrow, toSeedProductEscrow } from "./contract";
-import { useProductWorkspace } from "./useProductWorkspace";
+import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
 function SectionHeader({ title, body }: { title: string; body: string }) {
   return (
@@ -43,7 +43,7 @@ export function ProductHome() {
     refreshEscrows,
     status,
     activeLockHash,
-  } = useProductWorkspace();
+  } = useProductWorkspaceContext();
 
   const seededRecords = productEscrows.map((escrow) => toSeedProductEscrow(escrow, activeLockHash));
   const liveRecords = escrows.map((escrow) => toLiveProductEscrow(escrow, activeLockHash));
