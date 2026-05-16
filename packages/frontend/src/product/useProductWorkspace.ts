@@ -13,40 +13,23 @@ import {
   type ParticipantScriptRegistry,
   type StoredParticipantScript,
 } from "./registry";
-import { fetchEscrowCellsByType, initialDeployment, loadStoredState, STORAGE_KEYS } from "../studio";
-import type { DeploymentFormState, EscrowListItem, WalletState } from "../types";
+import {
+  fetchEscrowCellsByType,
+  loadDeploymentForNetwork,
+  loadNetwork,
+  NETWORK_CLIENTS,
+  STORAGE_KEYS,
+} from "../studio";
+import type { CkbNetwork, DeploymentFormState, EscrowListItem, WalletState } from "../types";
 
-export type ProductNetwork = "testnet" | "mainnet";
+export type ProductNetwork = CkbNetwork;
 
 const PRODUCT_STORAGE_KEYS = {
-  network: "ckb-escrow:product-network",
-  mainnetDeployment: "ckb-escrow:deployment-mainnet",
+  network: STORAGE_KEYS.network,
 } as const;
-
-const NETWORK_CLIENTS: Record<ProductNetwork, ccc.Client> = {
-  testnet: new ccc.ClientPublicTestnet(),
-  mainnet: new ccc.ClientPublicMainnet(),
-};
 
 function isDeploymentReady(deployment: DeploymentFormState): boolean {
   return Boolean(deployment.codeHash && deployment.depTxHash);
-}
-
-function loadNetwork(): ProductNetwork {
-  if (typeof window === "undefined") {
-    return "testnet";
-  }
-
-  const raw = window.localStorage.getItem(PRODUCT_STORAGE_KEYS.network);
-  return raw === "mainnet" ? "mainnet" : "testnet";
-}
-
-function loadDeploymentForNetwork(network: ProductNetwork): DeploymentFormState {
-  if (network === "testnet") {
-    return loadStoredState(STORAGE_KEYS.deployment, initialDeployment);
-  }
-
-  return loadStoredState(PRODUCT_STORAGE_KEYS.mainnetDeployment, initialDeployment);
 }
 
 export type ProductWorkspaceValue = ReturnType<typeof useProductWorkspace>;
@@ -100,10 +83,10 @@ export function useProductWorkspace() {
   useEffect(() => {
     function syncStorage(event: StorageEvent) {
       if (event.key === STORAGE_KEYS.deployment && network === "testnet") {
-        setDeployment(loadStoredState(STORAGE_KEYS.deployment, initialDeployment));
+        setDeployment(loadDeploymentForNetwork(network));
       }
-      if (event.key === PRODUCT_STORAGE_KEYS.mainnetDeployment && network === "mainnet") {
-        setDeployment(loadStoredState(PRODUCT_STORAGE_KEYS.mainnetDeployment, initialDeployment));
+      if (event.key === STORAGE_KEYS.mainnetDeployment && network === "mainnet") {
+        setDeployment(loadDeploymentForNetwork(network));
       }
       if (event.key === PARTICIPANT_SCRIPT_STORAGE_KEY) {
         setParticipantScripts(loadParticipantScriptRegistry());

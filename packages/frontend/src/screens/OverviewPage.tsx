@@ -26,6 +26,7 @@ import type {
   DeploymentProfile,
   DeploymentFormState,
   EscrowListItem,
+  CkbNetwork,
   WalletState,
 } from "../types";
 
@@ -34,6 +35,7 @@ interface OverviewPageProps {
   decodedEscrow: { state: string; amountShannons: bigint; deadlineMs: bigint; descriptionText: string } | null;
   status: string;
   lastTxHash: string;
+  network: CkbNetwork;
   deployment: DeploymentFormState;
   deploymentProfiles: DeploymentProfile[];
   createForm: CreateEscrowFormState;
@@ -46,6 +48,7 @@ interface OverviewPageProps {
   onExportSnapshot: () => void;
   onImportSnapshot: () => void;
   onResetStudio: () => void;
+  onSetNetwork: (network: CkbNetwork) => void;
   onSaveDeploymentProfile: () => void;
   onApplyDeploymentProfile: (profile: DeploymentProfile) => void;
   onFetchEscrows: () => void;
@@ -74,6 +77,7 @@ export function OverviewPage({
   decodedEscrow,
   status,
   lastTxHash,
+  network,
   deployment,
   deploymentProfiles,
   createForm,
@@ -86,6 +90,7 @@ export function OverviewPage({
   onExportSnapshot,
   onImportSnapshot,
   onResetStudio,
+  onSetNetwork,
   onSaveDeploymentProfile,
   onApplyDeploymentProfile,
   onFetchEscrows,
@@ -125,6 +130,7 @@ export function OverviewPage({
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4">
             <StatCard label="Wallets" value={walletState.wallets.length} />
+            <StatCard label="Network" value={network} />
             <StatCard
               label="Active Signer"
               value={walletState.activeSigner ? "Selected" : "Missing"}
@@ -133,8 +139,42 @@ export function OverviewPage({
               label="Deployment Ready"
               value={deployment.codeHash && deployment.depTxHash ? "Yes" : "No"}
             />
-            <StatCard label="Loaded Escrow" value={decodedEscrow?.state ?? "None"} />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="xl:col-span-2">
+        <CardHeader>
+          <CardTitle>Network</CardTitle>
+          <CardDescription>
+            Keep deployment profiles, wallets, addresses, and explorer links on the same CKB network.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => onSetNetwork("testnet")}
+            className={`rounded-[1.25rem] border p-4 text-left transition ${network === "testnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
+          >
+            <div className="mb-2 flex items-center gap-2">
+              <Badge variant={network === "testnet" ? "success" : "outline"}>Testnet</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Use ckt addresses, faucet funds, test deployments, and Pudge explorer links.
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => onSetNetwork("mainnet")}
+            className={`rounded-[1.25rem] border p-4 text-left transition ${network === "mainnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
+          >
+            <div className="mb-2 flex items-center gap-2">
+              <Badge variant={network === "mainnet" ? "destructive" : "outline"}>Mainnet</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Use ckb addresses and a separately deployed mainnet escrow script profile.
+            </p>
+          </button>
         </CardContent>
       </Card>
 
@@ -214,7 +254,7 @@ export function OverviewPage({
           </div>
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" size="sm" onClick={onSaveDeploymentProfile}>
-              Save Profile
+              Save {network} Profile
             </Button>
           </div>
         </CardContent>
@@ -238,6 +278,11 @@ export function OverviewPage({
               >
                 <div>
                   <strong>{profile.name}</strong>
+                  <div className="mt-2">
+                    <Badge variant={profile.network === "mainnet" ? "destructive" : "secondary"}>
+                      {profile.network ?? "testnet"}
+                    </Badge>
+                  </div>
                   <p className="mt-1 break-all text-sm text-muted-foreground">
                     {profile.deployment.codeHash || "No code hash"}
                   </p>
@@ -394,7 +439,7 @@ export function OverviewPage({
                   {item.txHash ? (
                     <a
                       className="mt-3 inline-flex text-sm font-medium text-primary hover:underline"
-                      href={createExplorerTxUrl(item.txHash)}
+                      href={createExplorerTxUrl(item.txHash, network)}
                       target="_blank"
                       rel="noreferrer"
                     >

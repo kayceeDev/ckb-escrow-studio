@@ -36,7 +36,10 @@ import {
   prettyJson,
   routeFromHash,
   ROUTE_LABELS,
-  testnetClient,
+  NETWORK_CLIENTS,
+  getDeploymentStorageKey,
+  loadDeploymentForNetwork,
+  loadNetwork,
   type RouteId,
 } from "./studio";
 import { formatEscrowError } from "./error-format";
@@ -47,6 +50,7 @@ import type {
   DeploymentProfile,
   DeploymentFormState,
   EscrowListItem,
+  CkbNetwork,
   WalletState,
 } from "./types";
 
@@ -73,12 +77,13 @@ const ROUTE_META: Record<RouteId, { icon: ReactNode; tone: string }> = {
 };
 
 export function StudioApp() {
+  const [network, setNetworkState] = useState<CkbNetwork>(() => loadNetwork());
   const [walletState, setWalletState] = useState<WalletState>({
     wallets: [],
     activeSigner: null,
   });
   const [deployment, setDeployment] = useState<DeploymentFormState>(() =>
-    loadStoredState(STORAGE_KEYS.deployment, initialDeployment),
+    loadDeploymentForNetwork(loadNetwork()),
   );
   const [deploymentProfiles, setDeploymentProfiles] = useState<DeploymentProfile[]>(() =>
     loadStoredState(STORAGE_KEYS.deploymentProfiles, [] as DeploymentProfile[]),
@@ -103,6 +108,7 @@ export function StudioApp() {
   const [isFetchingEscrows, setIsFetchingEscrows] = useState(false);
   const controllerRef = useRef<ccc.SignersController | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
+  const client = useMemo(() => NETWORK_CLIENTS[network], [network]);
 
   useEffect(() => {
     function onHashChange() {
@@ -114,8 +120,8 @@ export function StudioApp() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.deployment, JSON.stringify(deployment));
-  }, [deployment]);
+    window.localStorage.setItem(getDeploymentStorageKey(network), JSON.stringify(deployment));
+  }, [deployment, network]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -142,7 +148,7 @@ export function StudioApp() {
 
     async function refreshWallets() {
       setStatus("Refreshing wallets...");
-      await controller.refresh(testnetClient, (wallets) => {
+      await controller.refresh(client, (wallets) => {
         setWalletState((current) => ({
           wallets,
           activeSigner:
@@ -154,12 +160,12 @@ export function StudioApp() {
               : null,
         }));
       });
-      setStatus("Wallet discovery finished.");
+      setStatus(`Wallet discovery finished for ${network}.`);
     }
 
     void refreshWallets();
     return () => controller.disconnect();
-  }, []);
+  }, [client, network]);
 
   const decodedEscrow = useMemo(
     () => decodeEscrowHex(actionForm.escrowDataHex),
@@ -183,13 +189,22 @@ export function StudioApp() {
 
     setStatus("Refreshing wallets...");
     controllerRef.current.disconnect();
-    await controllerRef.current.refresh(testnetClient, (wallets) => {
+    await controllerRef.current.refresh(client, (wallets) => {
       setWalletState((current) => ({
         wallets,
         activeSigner: current.activeSigner,
       }));
     });
-    setStatus("Wallet refresh finished.");
+    setStatus(`Wallet refresh finished for ${network}.`);
+  }
+
+  function setNetwork(nextNetwork: CkbNetwork) {
+    window.localStorage.setItem(STORAGE_KEYS.network, nextNetwork);
+    setNetworkState(nextNetwork);
+    setDeployment(loadDeploymentForNetwork(nextNetwork));
+    setWalletState({ wallets: [], activeSigner: null });
+    setDiscoveredEscrows([]);
+    setStatus(`Switched Studio to ${nextNetwork}.`);
   }
 
   async function runAction(label: string, action: AsyncAction) {
@@ -237,7 +252,7 @@ export function StudioApp() {
   }
 
   function exportSnapshot() {
-    const snapshot = createStudioSnapshot(deployment, createForm, actionForm);
+    const snapshot = createStudioSnapshot(network, deployment, createForm, actionForm);
     const blob = new Blob([prettyJson(snapshot)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -251,6 +266,10 @@ export function StudioApp() {
   async function importSnapshot(file: File) {
     try {
       const snapshot = parseStudioSnapshot(await file.text());
+      if (snapshot.network) {
+        setNetworkState(snapshot.network);
+        window.localStorage.setItem(STORAGE_KEYS.network, snapshot.network);
+      }
       setDeployment(snapshot.deployment);
       setCreateForm(snapshot.create);
       setActionForm(snapshot.action);
@@ -275,23 +294,30 @@ export function StudioApp() {
       return;
     }
 
-    const profile = createDeploymentProfile(name, deployment);
+    const profile = createDeploymentProfile(network, name, deployment);
     setDeploymentProfiles((current) => [profile, ...current]);
     setStatus(`Saved deployment profile "${name}".`);
   }
 
   function applyDeploymentProfile(profile: DeploymentProfile) {
+    const profileNetwork = profile.network ?? "testnet";
+    if (profileNetwork !== network) {
+      window.localStorage.setItem(STORAGE_KEYS.network, profileNetwork);
+      setNetworkState(profileNetwork);
+      setWalletState({ wallets: [], activeSigner: null });
+      setDiscoveredEscrows([]);
+    }
     setDeployment(profile.deployment);
-    setStatus(`Applied deployment profile "${profile.name}".`);
+    setStatus(`Applied ${profileNetwork} deployment profile "${profile.name}".`);
   }
 
   async function fetchEscrows() {
     try {
       setIsFetchingEscrows(true);
-      setStatus("Fetching escrow cells by type script...");
-      const escrows = await fetchEscrowCellsByType(deployment);
+      setStatus(`Fetching ${network} escrow cells by type script...`);
+      const escrows = await fetchEscrowCellsByType(deployment, 12, client);
       setDiscoveredEscrows(escrows);
-      setStatus(`Fetched ${escrows.length} escrow cell(s).`);
+      setStatus(`Fetched ${escrows.length} ${network} escrow cell(s).`);
     } catch (error) {
       setStatus(`Escrow fetch failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -368,7 +394,7 @@ export function StudioApp() {
                     {lastTxHash}
                   </code>
                   <Button asChild variant="outline" className="w-full">
-                    <a href={createExplorerTxUrl(lastTxHash)} target="_blank" rel="noreferrer">
+                    <a href={createExplorerTxUrl(lastTxHash, network)} target="_blank" rel="noreferrer">
                       Open in Explorer
                     </a>
                   </Button>
@@ -432,6 +458,7 @@ export function StudioApp() {
             status={status}
             lastTxHash={lastTxHash}
             deployment={deployment}
+            network={network}
             deploymentProfiles={deploymentProfiles}
             createForm={createForm}
             actionForm={actionForm}
@@ -445,6 +472,7 @@ export function StudioApp() {
             onExportSnapshot={exportSnapshot}
             onImportSnapshot={() => importRef.current?.click()}
             onResetStudio={resetStudio}
+            onSetNetwork={setNetwork}
             onSaveDeploymentProfile={saveCurrentDeploymentProfile}
             onApplyDeploymentProfile={applyDeploymentProfile}
             onFetchEscrows={() => void fetchEscrows()}
@@ -503,6 +531,7 @@ export function StudioApp() {
 
         {route === "detail" ? (
           <DetailPage
+            network={network}
             txHash={actionForm.escrowTxHash}
             index={actionForm.escrowIndex}
             capacity={actionForm.escrowCapacity}

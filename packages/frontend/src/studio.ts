@@ -9,12 +9,22 @@ import type {
   DeploymentFormState,
   EscrowListItem,
   StudioSnapshot,
+  CkbNetwork,
 } from "./types";
 
-export const testnetClient = new ccc.ClientPublicTestnet();
+export type { CkbNetwork };
+
+export const NETWORK_CLIENTS: Record<CkbNetwork, ccc.Client> = {
+  testnet: new ccc.ClientPublicTestnet(),
+  mainnet: new ccc.ClientPublicMainnet(),
+};
+
+export const testnetClient = NETWORK_CLIENTS.testnet;
 
 export const STORAGE_KEYS = {
+  network: "ckb-escrow:network",
   deployment: "ckb-escrow:deployment",
+  mainnetDeployment: "ckb-escrow:deployment-mainnet",
   deploymentProfiles: "ckb-escrow:deployment-profiles",
   create: "ckb-escrow:create",
   action: "ckb-escrow:action",
@@ -62,6 +72,23 @@ export const ROUTE_LABELS: Record<RouteId, string> = {
   detail: "Detail",
   actions: "Operate",
 };
+
+export function loadNetwork(): CkbNetwork {
+  if (typeof window === "undefined") {
+    return "testnet";
+  }
+
+  const raw = window.localStorage.getItem(STORAGE_KEYS.network);
+  return raw === "mainnet" ? "mainnet" : "testnet";
+}
+
+export function getDeploymentStorageKey(network: CkbNetwork): string {
+  return network === "mainnet" ? STORAGE_KEYS.mainnetDeployment : STORAGE_KEYS.deployment;
+}
+
+export function loadDeploymentForNetwork(network: CkbNetwork): DeploymentFormState {
+  return loadStoredState(getDeploymentStorageKey(network), initialDeployment);
+}
 
 export function loadStoredState<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") {
@@ -167,7 +194,11 @@ export function routeFromHash(hash: string): RouteId {
   return "overview";
 }
 
-export function createExplorerTxUrl(txHash: string): string {
+export function createExplorerTxUrl(txHash: string, network: CkbNetwork = "testnet"): string {
+  if (network === "mainnet") {
+    return `https://explorer.nervos.org/transaction/${txHash}`;
+  }
+
   return `https://pudge.explorer.nervos.org/transaction/${txHash}?network=testnet`;
 }
 
@@ -188,12 +219,14 @@ export function createActivityItem(
 }
 
 export function createStudioSnapshot(
+  network: CkbNetwork,
   deployment: DeploymentFormState,
   create: CreateEscrowFormState,
   action: ActionFormState,
 ): StudioSnapshot {
   return {
     version: 1,
+    network,
     deployment,
     create,
     action,
@@ -201,12 +234,14 @@ export function createStudioSnapshot(
 }
 
 export function createDeploymentProfile(
+  network: CkbNetwork,
   name: string,
   deployment: DeploymentFormState,
 ): DeploymentProfile {
   return {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     name,
+    network,
     deployment,
   };
 }

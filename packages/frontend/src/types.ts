@@ -1,6 +1,8 @@
 import type * as ccc from "@ckb-ccc/ccc";
 import type { EscrowCellView } from "@ckb-escrow/sdk";
 
+export type CkbNetwork = "testnet" | "mainnet";
+
 export interface DeploymentFormState {
   codeHash: string;
   hashType: "type" | "data";
@@ -45,6 +47,7 @@ export interface WalletState {
 
 export interface StudioSnapshot {
   version: 1;
+  network?: CkbNetwork;
   deployment: DeploymentFormState;
   create: CreateEscrowFormState;
   action: ActionFormState;
@@ -53,6 +56,7 @@ export interface StudioSnapshot {
 export interface DeploymentProfile {
   id: string;
   name: string;
+  network?: CkbNetwork;
   deployment: DeploymentFormState;
 }
 

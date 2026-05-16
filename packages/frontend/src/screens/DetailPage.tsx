@@ -9,8 +9,10 @@ import {
   CardTitle,
 } from "../components/ui";
 import { createExplorerTxUrl } from "../studio";
+import type { CkbNetwork } from "../types";
 
 interface DetailPageProps {
+  network: CkbNetwork;
   txHash: string;
   index: string;
   capacity: string;
@@ -55,6 +57,7 @@ function DetailField({
 }
 
 export function DetailPage({
+  network,
   txHash,
   index,
   capacity,
@@ -83,7 +86,7 @@ export function DetailPage({
           <div className="flex flex-wrap gap-3">
             {txHash ? (
               <Button asChild variant="outline">
-                <a href={createExplorerTxUrl(txHash)} target="_blank" rel="noreferrer">
+                <a href={createExplorerTxUrl(txHash, network)} target="_blank" rel="noreferrer">
                   Open Transaction
                 </a>
               </Button>
