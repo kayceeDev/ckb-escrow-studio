@@ -9,7 +9,6 @@ import {
   FileText,
   Globe,
   Info,
-  PlugZap,
   Scale,
   ShieldCheck,
   Store,
@@ -52,8 +51,6 @@ export function CreateEscrowProduct() {
     setNetwork,
     client,
     walletState,
-    connectSigner,
-    disconnectSigner,
     deploymentReady,
     service,
     status: workspaceStatus,
@@ -224,29 +221,9 @@ export function CreateEscrowProduct() {
                   {deploymentReady ? `${network} deployment ready` : `No ${network} deployment`}
                 </Badge>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {walletState.wallets.flatMap((wallet) =>
-                  wallet.signers.map((signerInfo) => {
-                    const connected = walletState.activeSigner === signerInfo.signer;
-                    return (
-                      <Button
-                        key={`${wallet.name}-${signerInfo.name}`}
-                        variant={connected ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => void connectSigner(signerInfo.signer)}
-                      >
-                        <PlugZap className="h-4 w-4" />
-                        {connected ? `${signerInfo.name} connected` : `Connect ${signerInfo.name}`}
-                      </Button>
-                    );
-                  }),
-                )}
-                {walletState.activeSigner ? (
-                  <Button variant="outline" size="sm" onClick={() => void disconnectSigner()}>
-                    Disconnect
-                  </Button>
-                ) : null}
-              </div>
+              <p className="text-sm leading-6 text-muted-foreground">
+                Use the wallet control in the navbar to select the buyer signer. This form only funds the escrow after a signer and the active network deployment are ready.
+              </p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">

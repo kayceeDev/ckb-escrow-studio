@@ -4,9 +4,7 @@ import Link from "next/link";
 import {
   ArrowRight,
   CheckCircle2,
-  Globe,
   LayoutPanelTop,
-  PlugZap,
   RefreshCcw,
   ShieldCheck,
   Store,
@@ -32,11 +30,7 @@ function SectionHeader({ title, body }: { title: string; body: string }) {
 export function ProductHome() {
   const {
     network,
-    setNetwork,
     walletState,
-    connectSigner,
-    disconnectSigner,
-    refreshWallets,
     deploymentReady,
     escrows,
     isFetchingEscrows,
@@ -54,10 +48,10 @@ export function ProductHome() {
   const arbitratorEscrows = actorEscrows.filter((escrow) => escrow.viewerRole === "arbitrator");
 
   return (
-    <div className="mx-auto w-full max-w-[1280px] px-4 py-10 md:px-6 md:py-12">
-      <header className="mb-12 grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
+    <div className="mx-auto w-full max-w-[1360px] px-4 py-8 md:px-6 md:py-10 2xl:px-8">
+      <header className="mb-12 grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.5fr)] 2xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,0.48fr)]">
         <Card className="overflow-hidden">
-          <CardContent className="space-y-6 p-8 md:p-12">
+          <CardContent className="space-y-7 p-8 md:p-12 2xl:p-14">
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant="success" className="w-fit">Standalone Escrow</Badge>
               <Badge variant="secondary" className="w-fit">Known parties only</Badge>
@@ -65,11 +59,11 @@ export function ProductHome() {
             </div>
 
             <div className="space-y-4">
-              <h1 className="max-w-4xl font-serif text-4xl font-semibold tracking-tight text-balance md:text-7xl">
-                Connect a real wallet, switch between testnet and mainnet, and discover the escrows your role can actually move.
+              <h1 className="max-w-[13ch] font-serif text-4xl font-semibold leading-[0.98] tracking-tight text-balance md:text-6xl xl:max-w-[14ch] xl:text-[4.8rem] 2xl:text-[5.4rem]">
+                Role-aware escrow for real CKB transactions.
               </h1>
-              <p className="max-w-3xl text-base leading-8 text-muted-foreground md:text-lg">
-                Buyers, sellers, and arbitrators should all see the same escrow from their own role. The product now treats wallet connection and network selection as first-class flow, not hidden studio assumptions.
+              <p className="max-w-[58ch] text-base leading-8 text-muted-foreground md:text-lg xl:text-[1.2rem] xl:leading-9">
+                Connect once from the navbar, choose the right network, and see only the escrows your wallet can move as buyer, seller, or arbitrator.
               </p>
             </div>
 
@@ -100,48 +94,38 @@ export function ProductHome() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Wallet className="h-5 w-5 text-primary" />
-              Wallet, Network & Discovery
+              Workspace Status
             </CardTitle>
             <CardDescription>
-              Choose the chain first, then connect the signer that should map to buyer, seller, or arbitrator for the current escrow set.
+              Wallet and network controls live in the navbar so every page shares the same signer context.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setNetwork("testnet")}
-                className={`rounded-[1.25rem] border p-4 text-left transition ${network === "testnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
-              >
-                <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Testnet</span></div>
-                <p className="text-sm text-muted-foreground">Use `ckt` addresses, faucet funds, and testnet deployment profiles.</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setNetwork("mainnet")}
-                className={`rounded-[1.25rem] border p-4 text-left transition ${network === "mainnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
-              >
-                <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Mainnet</span></div>
-                <p className="text-sm text-muted-foreground">Use `ckb` addresses and only switch here after you have a real mainnet deployment profile.</p>
-              </button>
+            <div className="grid gap-3">
+              <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Network</p>
+                <div className="flex items-center justify-between gap-3">
+                  <strong className="capitalize">{network}</strong>
+                  <Badge variant={deploymentReady ? "success" : "destructive"}>
+                    {deploymentReady ? "Deployment ready" : "Deployment missing"}
+                  </Badge>
+                </div>
+              </div>
+              <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Wallet</p>
+                <div className="flex items-center justify-between gap-3">
+                  <strong>{walletState.activeSigner ? "Connected" : "Not connected"}</strong>
+                  <Badge variant={walletState.activeSigner ? "success" : "outline"}>
+                    {walletState.wallets.length} wallet(s)
+                  </Badge>
+                </div>
+              </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Badge variant={walletState.activeSigner ? "success" : "outline"}>
-                {walletState.activeSigner ? "Wallet connected" : "No signer selected"}
-              </Badge>
-              <Badge variant={deploymentReady ? "success" : "destructive"}>
-                {deploymentReady ? `${network} deployment ready` : `No ${network} deployment`}
-              </Badge>
-            </div>
             <div className="rounded-[1.25rem] border border-border bg-white/75 p-4 text-sm text-muted-foreground">
               {status}
             </div>
-            <div className="flex flex-wrap gap-3">
-              <Button variant="outline" onClick={() => void refreshWallets()}>
-                <RefreshCcw className="h-4 w-4" />
-                Refresh wallets
-              </Button>
+            <div className="grid gap-3">
               <Button
                 variant="outline"
                 onClick={() => void refreshEscrows()}
@@ -150,44 +134,12 @@ export function ProductHome() {
                 <LayoutPanelTop className="h-4 w-4" />
                 {isFetchingEscrows ? "Refreshing escrows" : "Refresh escrows"}
               </Button>
-              {walletState.activeSigner ? (
-                <Button variant="outline" onClick={() => void disconnectSigner()}>
-                  Disconnect wallet
-                </Button>
-              ) : null}
-            </div>
-            <div className="space-y-3">
-              {walletState.wallets.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No wallets discovered yet.</p>
-              ) : (
-                walletState.wallets.map((wallet) => (
-                  <div key={wallet.name} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div>
-                        <strong>{wallet.name}</strong>
-                        <p className="mt-1 text-sm text-muted-foreground">{wallet.signers.length} signer(s)</p>
-                      </div>
-                      <Badge variant="outline">{network}</Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {wallet.signers.map((signerInfo) => {
-                        const connected = walletState.activeSigner === signerInfo.signer;
-                        return (
-                          <Button
-                            key={`${wallet.name}-${signerInfo.name}`}
-                            variant={connected ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => void connectSigner(signerInfo.signer)}
-                          >
-                            <PlugZap className="h-4 w-4" />
-                            {connected ? `${signerInfo.name} connected` : `Connect ${signerInfo.name}`}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))
-              )}
+              <Button asChild variant="outline">
+                <Link href="/studio">
+                  <LayoutPanelTop className="h-4 w-4" />
+                  Manage deployments
+                </Link>
+              </Button>
             </div>
           </CardContent>
         </Card>

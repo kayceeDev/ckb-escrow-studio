@@ -32,17 +32,17 @@ export default function RootLayout({
           <div className="relative overflow-x-hidden">
             <div className="absolute inset-x-0 top-0 -z-10 h-[28rem] bg-[radial-gradient(circle_at_top_left,rgba(30,122,70,0.18),transparent_34%),radial-gradient(circle_at_top_right,rgba(133,181,146,0.12),transparent_30%)]" />
 
-            <header className="sticky top-0 z-30 border-b border-border/80 bg-background/80 backdrop-blur">
-              <div className="relative mx-auto flex w-full max-w-[1280px] items-center justify-between gap-4 px-4 py-4 md:px-6">
-                <div className="flex min-w-0 items-center gap-3">
-                  <Badge variant="success">CKB Escrow</Badge>
-                  <span className="hidden text-sm text-muted-foreground md:inline">
-                    standalone decentralized escrow
+            <header className="sticky top-0 z-30 border-b border-border/80 bg-background/86 backdrop-blur-xl">
+              <div className="relative mx-auto flex min-h-16 w-full max-w-[1280px] items-center justify-between gap-3 px-4 py-3 md:px-6">
+                <Link href="/" className="flex min-w-0 shrink-0 items-center gap-3">
+                  <Badge variant="success" className="whitespace-nowrap">CKB Escrow</Badge>
+                  <span className="hidden max-w-[13rem] truncate text-sm text-muted-foreground xl:inline">
+                    Standalone decentralized escrow
                   </span>
-                </div>
+                </Link>
 
-                <div className="hidden flex-1 items-center justify-center gap-2 md:flex">
-                  <nav className="hidden flex-wrap items-center gap-2 xl:flex">
+                <div className="hidden min-w-0 flex-1 items-center justify-center lg:flex">
+                  <nav className="flex items-center gap-1 rounded-full border border-border/70 bg-white/60 p-1 shadow-sm backdrop-blur">
                     {navItems.map((item) => (
                       <Button key={item.href} asChild variant="ghost" size="sm">
                         <Link href={item.href}>{item.label}</Link>
@@ -51,7 +51,7 @@ export default function RootLayout({
                   </nav>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <ProductNavbarWallet />
                   <MobileNav items={navItems} />
                 </div>

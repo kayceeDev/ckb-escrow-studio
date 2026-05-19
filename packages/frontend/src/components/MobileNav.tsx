@@ -109,7 +109,7 @@ export function MobileNav({ items }: MobileNavProps) {
           open ? "pointer-events-auto translate-y-0 opacity-100" : "pointer-events-none -translate-y-2 opacity-0",
         )}
       >
-        <Card className="overflow-hidden border-border/80 bg-[rgba(252,255,252,0.96)] shadow-[0_30px_80px_-30px_rgba(18,51,28,0.35)] backdrop-blur-xl">
+        <Card className="max-h-[calc(100vh-6rem)] overflow-y-auto border-border/80 bg-[rgba(252,255,252,0.96)] shadow-[0_30px_80px_-30px_rgba(18,51,28,0.35)] backdrop-blur-xl">
           <CardContent className="space-y-5 p-4">
             <div className="flex items-start justify-between gap-4 rounded-[1.25rem] border border-border/70 bg-white/80 p-4">
               <div className="space-y-2">

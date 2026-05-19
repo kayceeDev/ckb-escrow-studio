@@ -104,8 +104,6 @@ function canExecuteInProduct(
 export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const {
     walletState,
-    connectSigner,
-    disconnectSigner,
     deployment,
     deploymentReady,
     escrows,
@@ -273,33 +271,23 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Wallets</CardTitle>
-            <CardDescription>Select the signer whose lock hash should be matched against this escrow.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-primary" />Connected signer</CardTitle>
+            <CardDescription>Use the navbar wallet control to switch signer or network.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {walletState.wallets.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No wallets discovered yet.</p>
-            ) : (
-              walletState.wallets.map((wallet) => (
-                <div key={wallet.name} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                  <strong>{wallet.name}</strong>
-                  <p className="mb-3 mt-1 text-sm text-muted-foreground">{wallet.signers.length} signer(s)</p>
-                  <div className="flex flex-wrap gap-2">
-                    {wallet.signers.map((signerInfo) => (
-                      <Button
-                        key={`${wallet.name}-${walletState.activeSigner === signerInfo.signer ? ` connected` : `Connect `}`}
-                        size="sm"
-                        variant={walletState.activeSigner === signerInfo.signer ? "default" : "outline"}
-                        onClick={() => void connectSigner(signerInfo.signer)}
-                      >
-                        <Wallet className="h-4 w-4" />
-                        {walletState.activeSigner === signerInfo.signer ? ` connected` : `Connect `}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
+          <CardContent>
+            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <Badge variant={walletState.activeSigner ? "success" : "outline"}>
+                  {walletState.activeSigner ? "Signer selected" : "No signer"}
+                </Badge>
+                <Badge variant={record.viewerRole === "viewer" ? "outline" : "success"}>
+                  {record.viewerRole}
+                </Badge>
+              </div>
+              <p className="text-sm leading-6 text-muted-foreground">
+                The selected signer is matched against the buyer, seller, and arbitrator lock hashes. Switch wallets from the top-right control if this page is read-only.
+              </p>
+            </div>
           </CardContent>
         </Card>
 
