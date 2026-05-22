@@ -107,7 +107,7 @@ export function ProductHome() {
                 <div className="flex items-center justify-between gap-3">
                   <strong className="capitalize">{network}</strong>
                   <Badge variant={deploymentReady ? "success" : "destructive"}>
-                    {deploymentReady ? "Deployment ready" : "Deployment missing"}
+                    {deploymentReady ? "Deployment ready" : "Network unavailable"}
                   </Badge>
                 </div>
               </div>
@@ -172,9 +172,9 @@ export function ProductHome() {
           <Card>
             <CardContent className="flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-lg font-semibold">Load a {network} deployment profile first</p>
+                <p className="text-lg font-semibold">{network} escrow deployment is unavailable</p>
                 <p className="text-sm text-muted-foreground">
-                  The product dashboard can discover real escrows only after the escrow type script for this network is available. Studio currently manages the testnet path directly.
+                  This product build does not include complete escrow deployment metadata for {network} yet. Try another network or configure deployment metadata as a developer.
                 </p>
               </div>
               <Button asChild variant="outline">

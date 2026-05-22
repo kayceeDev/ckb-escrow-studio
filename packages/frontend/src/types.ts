@@ -5,10 +5,13 @@ export type CkbNetwork = "testnet" | "mainnet";
 
 export interface DeploymentFormState {
   codeHash: string;
-  hashType: "type" | "data";
+  hashType: "type" | "data" | "data1" | "data2";
   args: string;
   depTxHash: string;
   depIndex: string;
+  escrowLockCodeHash: string;
+  escrowLockHashType: "type" | "data" | "data1" | "data2";
+  escrowLockArgs: string;
 }
 
 export interface CreateEscrowFormState {

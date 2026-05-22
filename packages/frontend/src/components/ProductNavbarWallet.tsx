@@ -90,7 +90,7 @@ export function ProductNavbarWallet() {
             {activeSignerLabel ? activeSignerLabel.signerName : "Connect wallet"}
           </p>
           <p className="hidden max-w-[11rem] truncate text-xs text-muted-foreground xl:block">
-            {activeSignerLabel ? activeSignerLabel.walletName : deploymentReady ? "Choose signer" : "Deployment missing"}
+            {activeSignerLabel ? activeSignerLabel.walletName : deploymentReady ? "Choose signer" : "Network unavailable"}
           </p>
         </div>
 
@@ -124,7 +124,7 @@ export function ProductNavbarWallet() {
                     <Badge variant="success">Wallet</Badge>
                     <Badge variant="outline" className="capitalize">{network}</Badge>
                     <Badge variant={deploymentReady ? "success" : "destructive"}>
-                      {deploymentReady ? "Deployment ready" : "Deployment missing"}
+                      {deploymentReady ? "Deployment ready" : "Network unavailable"}
                     </Badge>
                   </div>
                   <p className="truncate text-[15px] font-semibold text-foreground">

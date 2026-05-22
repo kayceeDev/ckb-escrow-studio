@@ -17,6 +17,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Input,
+  Label,
 } from "../components/ui";
 import { createExplorerTxUrl } from "../studio";
 import type {
@@ -49,6 +51,10 @@ interface OverviewPageProps {
   onImportSnapshot: () => void;
   onResetStudio: () => void;
   onSetNetwork: (network: CkbNetwork) => void;
+  onUpdateDeployment: <K extends keyof DeploymentFormState>(
+    key: K,
+    value: DeploymentFormState[K],
+  ) => void;
   onSaveDeploymentProfile: () => void;
   onApplyDeploymentProfile: (profile: DeploymentProfile) => void;
   onFetchEscrows: () => void;
@@ -91,6 +97,7 @@ export function OverviewPage({
   onImportSnapshot,
   onResetStudio,
   onSetNetwork,
+  onUpdateDeployment,
   onSaveDeploymentProfile,
   onApplyDeploymentProfile,
   onFetchEscrows,
@@ -222,35 +229,89 @@ export function OverviewPage({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
-            Deployment Summary
+            Deployment Configuration
           </CardTitle>
+          <CardDescription>
+            Configure protocol scripts once per network. Product create flows use these values automatically.
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
           <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Type Script Code Hash
+            <p className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Escrow Type Script
             </p>
-            <p className="break-all text-sm">{deployment.codeHash || "Not set"}</p>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Hash Type
-              </p>
-              <p className="text-sm">{deployment.hashType}</p>
+            <div className="grid gap-3">
+              <div className="space-y-2">
+                <Label>Code hash</Label>
+                <Input value={deployment.codeHash} onChange={(event) => onUpdateDeployment("codeHash", event.target.value)} placeholder="0x..." />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Hash type</Label>
+                  <select
+                    value={deployment.hashType}
+                    onChange={(event) => onUpdateDeployment("hashType", event.target.value as DeploymentFormState["hashType"])}
+                    className="flex h-11 w-full rounded-2xl border border-border bg-white px-4 text-sm text-foreground outline-none ring-0 transition focus:border-primary/40"
+                  >
+                    <option value="type">type</option>
+                    <option value="data">data</option>
+                    <option value="data1">data1</option>
+                    <option value="data2">data2</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Args</Label>
+                  <Input value={deployment.args} onChange={(event) => onUpdateDeployment("args", event.target.value)} placeholder="0x" />
+                </div>
+              </div>
             </div>
-            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Dep Index
-              </p>
-              <p className="text-sm">{deployment.depIndex}</p>
-            </div>
           </div>
+
           <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Cell Dep Tx Hash
+            <p className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Escrow Lock Script
             </p>
-            <p className="break-all text-sm">{deployment.depTxHash || "Not set"}</p>
+            <div className="grid gap-3">
+              <div className="space-y-2">
+                <Label>Code hash</Label>
+                <Input value={deployment.escrowLockCodeHash} onChange={(event) => onUpdateDeployment("escrowLockCodeHash", event.target.value)} placeholder="0x..." />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Hash type</Label>
+                  <select
+                    value={deployment.escrowLockHashType}
+                    onChange={(event) => onUpdateDeployment("escrowLockHashType", event.target.value as DeploymentFormState["escrowLockHashType"])}
+                    className="flex h-11 w-full rounded-2xl border border-border bg-white px-4 text-sm text-foreground outline-none ring-0 transition focus:border-primary/40"
+                  >
+                    <option value="type">type</option>
+                    <option value="data">data</option>
+                    <option value="data1">data1</option>
+                    <option value="data2">data2</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Args</Label>
+                  <Input value={deployment.escrowLockArgs} onChange={(event) => onUpdateDeployment("escrowLockArgs", event.target.value)} placeholder="0x" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Cell Dep
+            </p>
+            <div className="grid gap-3 sm:grid-cols-[1fr_8rem]">
+              <div className="space-y-2">
+                <Label>Tx hash</Label>
+                <Input value={deployment.depTxHash} onChange={(event) => onUpdateDeployment("depTxHash", event.target.value)} placeholder="0x..." />
+              </div>
+              <div className="space-y-2">
+                <Label>Index</Label>
+                <Input value={deployment.depIndex} onChange={(event) => onUpdateDeployment("depIndex", event.target.value)} placeholder="0" />
+              </div>
+            </div>
           </div>
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" size="sm" onClick={onSaveDeploymentProfile}>

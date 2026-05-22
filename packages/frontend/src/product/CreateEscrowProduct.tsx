@@ -30,6 +30,7 @@ import {
   Textarea,
 } from "../components/ui";
 import { formatEscrowError } from "../error-format";
+import { makeEscrowLock } from "../studio";
 import { storedScriptFromScriptLike } from "./registry";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
@@ -51,6 +52,7 @@ export function CreateEscrowProduct() {
     setNetwork,
     client,
     walletState,
+    deployment,
     deploymentReady,
     service,
     status: workspaceStatus,
@@ -64,8 +66,6 @@ export function CreateEscrowProduct() {
   const [description, setDescription] = useState("Landing page redesign and responsive polish for the first milestone.");
   const [platformArbitratorAddress, setPlatformArbitratorAddress] = useState("");
   const [customArbitratorAddress, setCustomArbitratorAddress] = useState("");
-  const [escrowLockCodeHash, setEscrowLockCodeHash] = useState("");
-  const [escrowLockArgs, setEscrowLockArgs] = useState("0x");
   const [status, setStatus] = useState("Fill the form, connect a wallet, and save participant scripts before funding.");
   const [busy, setBusy] = useState(false);
   const [lastTxHash, setLastTxHash] = useState("");
@@ -122,12 +122,12 @@ export function CreateEscrowProduct() {
 
   async function createEscrow() {
     if (!service) {
-      setStatus("Connect a wallet and load the correct deployment first.");
+      setStatus(`Connect a wallet. If this persists, ${network} escrow deployment is not configured for this app yet.`);
       return;
     }
 
-    if (!escrowLockCodeHash) {
-      setStatus("Escrow lock code hash is still required. Keep it aligned with the lock script your protocol expects.");
+    if (!deploymentReady) {
+      setStatus(`${network} escrow deployment is unavailable in this app build.`);
       return;
     }
 
@@ -145,11 +145,7 @@ export function CreateEscrowProduct() {
       const txHash = await service.sendCreateEscrow({
         sellerLock: sellerScript,
         arbitratorLock: arbitratorScript,
-        escrowLock: {
-          codeHash: escrowLockCodeHash,
-          hashType: "type",
-          args: escrowLockArgs || "0x",
-        },
+        escrowLock: makeEscrowLock(deployment),
         amountShannons,
         deadlineMs,
         description: fullDescription,
@@ -179,7 +175,7 @@ export function CreateEscrowProduct() {
           <CardHeader>
             <CardTitle className="text-2xl">Create a New Escrow</CardTitle>
             <CardDescription>
-              This flow now uses real participant addresses and a real connected buyer wallet. The product can submit create transactions once deployment and escrow-lock settings are available for the active network.
+              This flow uses real participant addresses and the connected buyer wallet. Protocol deployment metadata is provided by the app for the active network.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -190,7 +186,7 @@ export function CreateEscrowProduct() {
                 className={`rounded-[1.25rem] border p-4 text-left transition ${network === "testnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Testnet</span></div>
-                <p className="text-sm text-muted-foreground">Use `ckt` participant addresses and your testnet deployment profile.</p>
+                <p className="text-sm text-muted-foreground">Use `ckt` participant addresses and configured testnet deployment metadata.</p>
               </button>
               <button
                 type="button"
@@ -198,7 +194,7 @@ export function CreateEscrowProduct() {
                 className={`rounded-[1.25rem] border p-4 text-left transition ${network === "mainnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Mainnet</span></div>
-                <p className="text-sm text-muted-foreground">Use `ckb` participant addresses and a real mainnet deployment profile.</p>
+                <p className="text-sm text-muted-foreground">Use `ckb` participant addresses once mainnet deployment metadata is configured.</p>
               </button>
             </div>
 
@@ -222,7 +218,7 @@ export function CreateEscrowProduct() {
                 </Badge>
               </div>
               <p className="text-sm leading-6 text-muted-foreground">
-                Use the wallet control in the navbar to select the buyer signer. This form only funds the escrow after a signer and the active network deployment are ready.
+                Use the wallet control in the navbar to select the buyer signer. This form funds the escrow once the app has deployment metadata for the active network.
               </p>
             </div>
 
@@ -282,20 +278,22 @@ export function CreateEscrowProduct() {
 
             <Card className="border-dashed bg-secondary/40 shadow-none">
               <CardHeader>
-                <CardTitle className="text-base">Escrow lock configuration</CardTitle>
+                <CardTitle className="text-base">Protocol lock</CardTitle>
                 <CardDescription>
-                  The create transaction still needs the escrow cell lock script. The type script enforces business rules, but this lock script must still be present and valid for your protocol.
+                  The escrow cell lock script is read from app deployment config, so buyers do not enter protocol hashes manually.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]"><Wallet className="h-4 w-4" />Escrow Lock Code Hash</Label>
-                  <Input value={escrowLockCodeHash} onChange={(event) => setEscrowLockCodeHash(event.target.value)} placeholder="0x..." />
+              <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
+                <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Escrow lock</p>
+                  <p className="break-all text-foreground">{deployment.escrowLockCodeHash || "Not configured"}</p>
+                  <p className="mt-2 break-all">Args: {deployment.escrowLockArgs || "0x"}</p>
                 </div>
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]"><Wallet className="h-4 w-4" />Escrow Lock Args</Label>
-                  <Input value={escrowLockArgs} onChange={(event) => setEscrowLockArgs(event.target.value)} placeholder="0x" />
-                </div>
+                {!deploymentReady ? (
+                  <p className="text-destructive">
+                    {network} escrow deployment is not configured for this app build yet.
+                  </p>
+                ) : null}
               </CardContent>
             </Card>
 
@@ -307,7 +305,7 @@ export function CreateEscrowProduct() {
                 Create & Fund Escrow
               </Button>
               <Button asChild size="lg" variant="outline">
-                <Link href="/studio">Use Studio Instead</Link>
+                <Link href="/studio">Open Developer Studio</Link>
               </Button>
             </div>
           </CardContent>
@@ -333,7 +331,7 @@ export function CreateEscrowProduct() {
               <p className="mb-2 font-medium text-foreground">Protocol constraints</p>
               <ul className="space-y-2">
                 <li>The contract stores participant lock hashes in escrow data.</li>
-                <li>The create flow still needs an escrow lock script for the escrow cell itself.</li>
+                <li>The create flow derives the escrow cell lock from the active deployment profile.</li>
                 <li>Mainnet and testnet must use separate deployments and addresses.</li>
               </ul>
             </div>

@@ -27,9 +27,11 @@ import {
   initialActionForm,
   initialCreateForm,
   initialDeployment,
+  isDeploymentReady,
   loadStoredState,
   makeCellDep,
   makeEscrowCell,
+  makeEscrowLock,
   makeLock,
   makeTypeScript,
   parseStudioSnapshot,
@@ -435,8 +437,8 @@ export function StudioApp() {
             <Badge variant={walletState.activeSigner ? "success" : "destructive"}>
               {walletState.activeSigner ? "Signer Ready" : "Signer Missing"}
             </Badge>
-            <Badge variant={deployment.codeHash && deployment.depTxHash ? "success" : "outline"}>
-              {deployment.codeHash && deployment.depTxHash ? "Deployment Loaded" : "Deployment Incomplete"}
+            <Badge variant={isDeploymentReady(deployment) ? "success" : "outline"}>
+              {isDeploymentReady(deployment) ? "Deployment Loaded" : "Deployment Incomplete"}
             </Badge>
           </div>
         </CardContent>
@@ -473,6 +475,9 @@ export function StudioApp() {
             onImportSnapshot={() => importRef.current?.click()}
             onResetStudio={resetStudio}
             onSetNetwork={setNetwork}
+            onUpdateDeployment={(key, value) =>
+              setDeployment((current) => ({ ...current, [key]: value }))
+            }
             onSaveDeploymentProfile={saveCurrentDeploymentProfile}
             onApplyDeploymentProfile={applyDeploymentProfile}
             onFetchEscrows={() => void fetchEscrows()}
@@ -499,7 +504,7 @@ export function StudioApp() {
                     createForm.arbitratorCodeHash,
                     createForm.arbitratorArgs,
                   ),
-                  escrowLock: makeLock(createForm.escrowCodeHash, createForm.escrowArgs),
+                  escrowLock: makeEscrowLock(deployment),
                   amountShannons: BigInt(createForm.amountShannons),
                   deadlineMs: BigInt(createForm.deadlineMs),
                   description: createForm.description,
@@ -519,7 +524,7 @@ export function StudioApp() {
                     createForm.arbitratorCodeHash,
                     createForm.arbitratorArgs,
                   ),
-                  escrowLock: makeLock(createForm.escrowCodeHash, createForm.escrowArgs),
+                  escrowLock: makeEscrowLock(deployment),
                   amountShannons: BigInt(createForm.amountShannons),
                   deadlineMs: BigInt(createForm.deadlineMs),
                   description: createForm.description,

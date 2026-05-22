@@ -37,6 +37,9 @@ export const initialDeployment: DeploymentFormState = {
   args: "0x",
   depTxHash: "",
   depIndex: "0",
+  escrowLockCodeHash: "",
+  escrowLockHashType: "type",
+  escrowLockArgs: "0x",
 };
 
 export const initialCreateForm: CreateEscrowFormState = {
@@ -147,6 +150,23 @@ export function makeLock(codeHash: string, args: string): ccc.ScriptLike {
     hashType: "type",
     args: args || "0x",
   };
+}
+
+export function makeEscrowLock(deployment: DeploymentFormState): ccc.ScriptLike {
+  return {
+    codeHash: deployment.escrowLockCodeHash || "0x",
+    hashType: deployment.escrowLockHashType || "type",
+    args: deployment.escrowLockArgs || "0x",
+  };
+}
+
+export function isDeploymentReady(deployment: DeploymentFormState): boolean {
+  return Boolean(
+    deployment.codeHash &&
+      deployment.depTxHash &&
+      deployment.escrowLockCodeHash &&
+      deployment.escrowLockArgs,
+  );
 }
 
 export function makeEscrowCell(

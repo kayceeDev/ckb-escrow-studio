@@ -1,5 +1,5 @@
 import type { ChangeEvent, ReactNode } from "react";
-import { CalendarClock, FileText, Scale, ShieldCheck, Store, Vault } from "lucide-react";
+import { CalendarClock, FileText, Scale, ShieldCheck, Store } from "lucide-react";
 
 import {
   Button,
@@ -65,7 +65,7 @@ export function CreatePage({
         <CardHeader>
           <CardTitle>Create Escrow</CardTitle>
           <CardDescription>
-            Configure seller, arbitrator, escrow lock, amount, deadline, and description for a new escrow cell.
+            Configure parties, amount, deadline, and description for a new escrow cell. Protocol lock config comes from the active deployment profile.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -95,19 +95,6 @@ export function CreatePage({
               label="Arbitrator Args"
               value={createForm.arbitratorArgs}
               onChange={(value) => onUpdate("arbitratorArgs", value)}
-            />
-            <Field
-              icon={<Vault className="h-4 w-4" />}
-              label="Escrow Lock Code Hash"
-              value={createForm.escrowCodeHash}
-              placeholder="0x..."
-              onChange={(value) => onUpdate("escrowCodeHash", value)}
-            />
-            <Field
-              icon={<Vault className="h-4 w-4" />}
-              label="Escrow Args"
-              value={createForm.escrowArgs}
-              onChange={(value) => onUpdate("escrowArgs", value)}
             />
             <Field
               icon={<Scale className="h-4 w-4" />}
@@ -160,6 +147,9 @@ export function CreatePage({
           </p>
           <p>
             That keeps the UX simpler and reduces the risk of the frontend drifting away from the Rust contract layout.
+          </p>
+          <p>
+            The escrow cell lock script is read from the active deployment profile, so it is configured once per network instead of typed into every create transaction.
           </p>
         </CardContent>
       </Card>

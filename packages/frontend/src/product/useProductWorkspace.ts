@@ -15,11 +15,12 @@ import {
 } from "./registry";
 import {
   fetchEscrowCellsByType,
-  loadDeploymentForNetwork,
+  isDeploymentReady,
   loadNetwork,
   NETWORK_CLIENTS,
   STORAGE_KEYS,
 } from "../studio";
+import { resolveProductDeployment } from "../config/deployments";
 import type { CkbNetwork, DeploymentFormState, EscrowListItem, WalletState } from "../types";
 
 export type ProductNetwork = CkbNetwork;
@@ -28,17 +29,13 @@ const PRODUCT_STORAGE_KEYS = {
   network: STORAGE_KEYS.network,
 } as const;
 
-function isDeploymentReady(deployment: DeploymentFormState): boolean {
-  return Boolean(deployment.codeHash && deployment.depTxHash);
-}
-
 export type ProductWorkspaceValue = ReturnType<typeof useProductWorkspace>;
 
 export function useProductWorkspace() {
   const [network, setNetworkState] = useState<ProductNetwork>(() => loadNetwork());
   const [walletState, setWalletState] = useState<WalletState>({ wallets: [], activeSigner: null });
   const [deployment, setDeployment] = useState<DeploymentFormState>(() =>
-    loadDeploymentForNetwork(loadNetwork()),
+    resolveProductDeployment(loadNetwork()),
   );
   const [escrows, setEscrows] = useState<EscrowListItem[]>([]);
   const [isFetchingEscrows, setIsFetchingEscrows] = useState(false);
@@ -83,10 +80,10 @@ export function useProductWorkspace() {
   useEffect(() => {
     function syncStorage(event: StorageEvent) {
       if (event.key === STORAGE_KEYS.deployment && network === "testnet") {
-        setDeployment(loadDeploymentForNetwork(network));
+        setDeployment(resolveProductDeployment(network));
       }
       if (event.key === STORAGE_KEYS.mainnetDeployment && network === "mainnet") {
-        setDeployment(loadDeploymentForNetwork(network));
+        setDeployment(resolveProductDeployment(network));
       }
       if (event.key === PARTICIPANT_SCRIPT_STORAGE_KEY) {
         setParticipantScripts(loadParticipantScriptRegistry());
@@ -94,7 +91,7 @@ export function useProductWorkspace() {
       if (event.key === PRODUCT_STORAGE_KEYS.network) {
         const nextNetwork = loadNetwork();
         setNetworkState(nextNetwork);
-        setDeployment(loadDeploymentForNetwork(nextNetwork));
+        setDeployment(resolveProductDeployment(nextNetwork));
       }
     }
 
@@ -201,7 +198,7 @@ export function useProductWorkspace() {
       window.localStorage.setItem(PRODUCT_STORAGE_KEYS.network, nextNetwork);
     }
     setNetworkState(nextNetwork);
-    setDeployment(loadDeploymentForNetwork(nextNetwork));
+    setDeployment(resolveProductDeployment(nextNetwork));
     setEscrows([]);
     setWalletState({ wallets: [], activeSigner: null });
     setActiveLockHash(null);
