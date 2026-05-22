@@ -76,6 +76,26 @@ describe("ccc adapter", () => {
     expect(tx.outputsData).toHaveLength(1);
   });
 
+  it("adds occupied capacity on top of the escrow amount", () => {
+    const tx = buildCreateEscrowTransaction(deployment, {
+      buyerLock,
+      sellerLock,
+      arbitratorLock,
+      escrowLock,
+      amountShannons: 1_000n,
+      deadlineMs: 1_700_000_000_000n,
+      description: "website redesign",
+    });
+
+    expect(tx.outputs[0].capacity).toBeGreaterThan(1_000n);
+    const occupied = ccc.CellOutput.from(
+      { ...tx.outputs[0], capacity: 0n },
+      tx.outputsData[0],
+    ).capacity;
+
+    expect(tx.outputs[0].capacity).toBe(1_000n + occupied);
+  });
+
   it("builds a dispute transaction with a dispute witness", () => {
     const tx = buildDisputeTransaction(deployment, {
       escrowInput: escrowCell("01"),

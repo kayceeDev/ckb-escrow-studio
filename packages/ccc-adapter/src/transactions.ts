@@ -19,6 +19,10 @@ function toCapacity(value: bigint | number | string | undefined, fallback: bigin
   return value === undefined ? fallback : BigInt(value);
 }
 
+function occupiedCapacity(cellOutput: ccc.CellOutputLike, outputData: ccc.HexLike): bigint {
+  return ccc.CellOutput.from({ ...cellOutput, capacity: 0n }, outputData).capacity;
+}
+
 function createWitness(inputTypeHex: ccc.HexLike): ccc.Hex {
   return ccc.hexFrom(
     ccc.WitnessArgs.from({
@@ -78,12 +82,16 @@ export function buildCreateEscrowTransaction(
     throw new Error("Create escrow planning must return a create plan");
   }
   const tx = applyEscrowDeployment(ccc.Transaction.default(), deployment);
+  const escrowOutput = {
+    lock: params.escrowLock,
+    type: getEscrowTypeScript(deployment),
+  };
+  const minimumEscrowCapacity = record.amountShannons + occupiedCapacity(escrowOutput, plan.outputDataHex);
 
   tx.addOutput(
     {
-      lock: params.escrowLock,
-      type: getEscrowTypeScript(deployment),
-      capacity: toCapacity(params.capacity, record.amountShannons),
+      ...escrowOutput,
+      capacity: toCapacity(params.capacity, minimumEscrowCapacity),
     },
     plan.outputDataHex,
   );
