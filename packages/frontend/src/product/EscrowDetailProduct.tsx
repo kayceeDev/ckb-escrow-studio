@@ -6,14 +6,13 @@ import { AlertTriangle, ArrowRight, CalendarClock, CircleHelp, RefreshCcw, Scale
 
 import { formatEscrowError } from "../error-format";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "../components/ui";
-import { getEscrowById } from "./mock-data";
-import { ProductActionView, ProductEscrowRecord, toLiveProductEscrow, toSeedProductEscrow } from "./contract";
+import { ProductActionView, ProductEscrowRecord, makeLiveEscrowId, toLiveProductEscrow } from "./contract";
 import { type StoredParticipantScript } from "./registry";
 import { createEscrowInput } from "./utils";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
 function ActionBadge({ source }: { source: ProductEscrowRecord["source"] }) {
-  return <Badge variant={source === "live" ? "success" : "outline"}>{source === "live" ? "Live escrow" : "Preview escrow"}</Badge>;
+  return <Badge variant={source === "live" ? "success" : "outline"}>Live escrow</Badge>;
 }
 
 function ParticipantScriptEditor({
@@ -118,17 +117,13 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [lastTxHash, setLastTxHash] = useState<string>("");
 
-  const seeded = getEscrowById(escrowId);
-  const liveItem = escrows.find((escrow) => `${escrow.txHash}:${escrow.index}` === escrowId);
+  const liveItem = escrows.find((escrow) => makeLiveEscrowId(escrow.txHash, escrow.index) === escrowId);
   const record = useMemo(() => {
     if (liveItem) {
       return toLiveProductEscrow(liveItem, activeLockHash);
     }
-    if (seeded) {
-      return toSeedProductEscrow(seeded, activeLockHash);
-    }
     return null;
-  }, [activeLockHash, liveItem, seeded]);
+  }, [activeLockHash, liveItem]);
 
   async function runAction(action: ProductActionView["action"]) {
     if (!service || !liveItem || !record) {
@@ -190,6 +185,21 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     }
   }
 
+  if (!record && isFetchingEscrows) {
+    return (
+      <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
+        <Card>
+          <CardContent className="space-y-4 p-8">
+            <p className="text-lg font-semibold">Loading escrow</p>
+            <p className="text-sm text-muted-foreground">
+              Fetching live escrow cells for the current network before deciding whether this route exists.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (!record) {
     return (
       <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
@@ -197,7 +207,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           <CardContent className="space-y-4 p-8">
             <p className="text-lg font-semibold">Escrow not found</p>
             <p className="text-sm text-muted-foreground">
-              This route does not match a seeded preview escrow and no fetched live escrow with that transaction reference is loaded yet.
+              This route does not match a fetched live escrow for the current network. Refresh escrows, confirm the network, or open it from the dashboard after discovery completes.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button asChild><Link href="/">Back home</Link></Button>

@@ -12,8 +12,8 @@ import {
 } from "lucide-react";
 
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui";
-import { buyerHighlights, productEscrows } from "./mock-data";
-import { toLiveProductEscrow, toSeedProductEscrow } from "./contract";
+import { buyerHighlights } from "./mock-data";
+import { toLiveProductEscrow } from "./contract";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
 function SectionHeader({ title, body }: { title: string; body: string }) {
@@ -39,7 +39,6 @@ export function ProductHome() {
     activeLockHash,
   } = useProductWorkspaceContext();
 
-  const seededRecords = productEscrows.map((escrow) => toSeedProductEscrow(escrow, activeLockHash));
   const liveRecords = escrows.map((escrow) => toLiveProductEscrow(escrow, activeLockHash));
   const actorEscrows = liveRecords.filter((escrow) => escrow.viewerRole !== "viewer");
   const needsAction = actorEscrows.filter((escrow) => escrow.actions.some((action) => action.enabled));
@@ -231,42 +230,6 @@ export function ProductHome() {
             ))}
           </div>
         )}
-      </section>
-
-      <section className="space-y-5">
-        <SectionHeader
-          title="Seeded preview escrows"
-          body="These stay in the product so the UX remains understandable even before a live deployment is loaded."
-        />
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {seededRecords.map((escrow) => (
-            <Card key={escrow.id} className="overflow-hidden">
-              <CardHeader>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <CardTitle className="text-lg">{escrow.title}</CardTitle>
-                  <Badge variant={escrow.state === "Disputed" ? "destructive" : escrow.state === "Delivered" ? "secondary" : "success"}>
-                    {escrow.state}
-                  </Badge>
-                </div>
-                <CardDescription>{escrow.description}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">{escrow.viewerRole}</Badge>
-                  <Badge variant="outline">Preview</Badge>
-                </div>
-                <div className="rounded-2xl border border-border bg-white/75 p-4 text-sm text-muted-foreground">
-                  <p><strong className="text-foreground">Seller:</strong> {escrow.sellerLabel}</p>
-                  <p><strong className="text-foreground">Arbitrator:</strong> {escrow.arbitratorLabel}</p>
-                </div>
-                <Button asChild variant="outline" className="w-full">
-                  <Link href={`/escrows/${encodeURIComponent(escrow.id)}`}>Open Preview</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       </section>
 
       <section className="mt-10 grid gap-4 md:grid-cols-3">

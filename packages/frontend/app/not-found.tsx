@@ -16,7 +16,7 @@ export default function NotFoundPage() {
         <CardHeader>
           <CardTitle>Escrow Not Found</CardTitle>
           <CardDescription>
-            The escrow you requested does not exist in the current seeded product dataset.
+            The escrow you requested was not found for the currently selected network.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex gap-3">

@@ -27,7 +27,64 @@ export type ProductNetwork = CkbNetwork;
 
 const PRODUCT_STORAGE_KEYS = {
   network: STORAGE_KEYS.network,
+  activeSigner: "ckb-escrow:product-active-signer",
 } as const;
+
+interface StoredActiveSigner {
+  network: ProductNetwork;
+  walletName: string;
+  signerName: string;
+}
+
+function signerStorageKey(walletName: string, signerName: string): string {
+  return `${walletName}:${signerName}`;
+}
+
+function loadStoredActiveSigner(): StoredActiveSigner | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const raw = window.localStorage.getItem(PRODUCT_STORAGE_KEYS.activeSigner);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredActiveSigner>;
+    if (
+      (parsed.network === "testnet" || parsed.network === "mainnet") &&
+      typeof parsed.walletName === "string" &&
+      typeof parsed.signerName === "string"
+    ) {
+      return {
+        network: parsed.network,
+        walletName: parsed.walletName,
+        signerName: parsed.signerName,
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function saveStoredActiveSigner(value: StoredActiveSigner): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(PRODUCT_STORAGE_KEYS.activeSigner, JSON.stringify(value));
+}
+
+function clearStoredActiveSigner(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(PRODUCT_STORAGE_KEYS.activeSigner);
+}
 
 export type ProductWorkspaceValue = ReturnType<typeof useProductWorkspace>;
 
@@ -45,6 +102,7 @@ export function useProductWorkspace() {
     loadParticipantScriptRegistry(),
   );
   const controllerRef = useRef<ccc.SignersController | null>(null);
+  const restoredSignerRef = useRef<string | null>(null);
 
   const client = useMemo(() => NETWORK_CLIENTS[network], [network]);
 
@@ -56,6 +114,24 @@ export function useProductWorkspace() {
     setStatus(`Refreshing ${network} wallets...`);
     controllerRef.current.disconnect();
     await controllerRef.current.refresh(client, (wallets) => {
+      const storedSigner = loadStoredActiveSigner();
+      const restoredSigner =
+        storedSigner?.network === network
+          ? wallets
+              .flatMap((wallet) =>
+                wallet.signers.map((signerInfo) => ({
+                  walletName: wallet.name,
+                  signerName: signerInfo.name,
+                  signer: signerInfo.signer,
+                })),
+              )
+              .find(
+                (option) =>
+                  option.walletName === storedSigner.walletName &&
+                  option.signerName === storedSigner.signerName,
+              )
+          : undefined;
+
       setWalletState((current) => ({
         wallets,
         activeSigner:
@@ -64,6 +140,8 @@ export function useProductWorkspace() {
             wallet.signers.some((signerInfo) => signerInfo.signer === current.activeSigner),
           )
             ? current.activeSigner
+            : restoredSigner?.signer
+              ? restoredSigner.signer
             : null,
       }));
     });
@@ -170,12 +248,27 @@ export function useProductWorkspace() {
     try {
       setStatus("Connecting wallet...");
       await signer.connect();
-      setWalletState((current) => ({ ...current, activeSigner: signer }));
+      setWalletState((current) => {
+        for (const wallet of current.wallets) {
+          const signerInfo = wallet.signers.find((candidate) => candidate.signer === signer);
+          if (signerInfo) {
+            saveStoredActiveSigner({
+              network,
+              walletName: wallet.name,
+              signerName: signerInfo.name,
+            });
+            restoredSignerRef.current = signerStorageKey(wallet.name, signerInfo.name);
+            break;
+          }
+        }
+
+        return { ...current, activeSigner: signer };
+      });
       setStatus("Wallet connected.");
     } catch (error) {
       setStatus(`Wallet connect failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }, []);
+  }, [network]);
 
   const disconnectSigner = useCallback(async () => {
     if (!walletState.activeSigner) {
@@ -185,6 +278,8 @@ export function useProductWorkspace() {
     try {
       setStatus("Disconnecting wallet...");
       await walletState.activeSigner.disconnect();
+      clearStoredActiveSigner();
+      restoredSignerRef.current = null;
       setWalletState((current) => ({ ...current, activeSigner: null }));
       setActiveLockHash(null);
       setStatus("Wallet disconnected.");
@@ -200,9 +295,56 @@ export function useProductWorkspace() {
     setNetworkState(nextNetwork);
     setDeployment(resolveProductDeployment(nextNetwork));
     setEscrows([]);
+    clearStoredActiveSigner();
+    restoredSignerRef.current = null;
     setWalletState({ wallets: [], activeSigner: null });
     setActiveLockHash(null);
   }, []);
+
+  useEffect(() => {
+    const activeSigner = walletState.activeSigner;
+    if (!activeSigner) {
+      return;
+    }
+
+    const activeOption = walletState.wallets
+      .flatMap((wallet) =>
+        wallet.signers.map((signerInfo) => ({
+          walletName: wallet.name,
+          signerName: signerInfo.name,
+          signer: signerInfo.signer,
+        })),
+      )
+      .find((option) => option.signer === activeSigner);
+
+    if (!activeOption) {
+      return;
+    }
+
+    const key = signerStorageKey(activeOption.walletName, activeOption.signerName);
+    if (restoredSignerRef.current === key) {
+      return;
+    }
+
+    restoredSignerRef.current = key;
+    void activeSigner
+      .connect()
+      .then(() => {
+        saveStoredActiveSigner({
+          network,
+          walletName: activeOption.walletName,
+          signerName: activeOption.signerName,
+        });
+        setStatus("Wallet reconnected.");
+      })
+      .catch(() => {
+        clearStoredActiveSigner();
+        restoredSignerRef.current = null;
+        setWalletState((current) =>
+          current.activeSigner === activeSigner ? { ...current, activeSigner: null } : current,
+        );
+      });
+  }, [network, walletState.activeSigner, walletState.wallets]);
 
   const saveParticipantScript = useCallback((lockHash: string, script: StoredParticipantScript) => {
     setParticipantScripts((current) => ({

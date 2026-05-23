@@ -67,7 +67,6 @@ export function MobileNav({ items }: MobileNavProps) {
               <span className={cn("text-xs", active ? "text-primary-foreground/80" : "text-muted-foreground")}>
                 {item.href === "/" && "Product overview and active escrows"}
                 {item.href === "/escrows/create" && "Start a new protected payment flow"}
-                {item.href.includes("/escrows/") && item.href !== "/escrows/create" && "See a sample escrow case file"}
                 {item.href === "/studio" && "Operator tools, deployment, and diagnostics"}
               </span>
             </div>
