@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import * as ccc from "@ckb-ccc/ccc";
 import {
   AlertTriangle,
   CalendarClock,
+  ChevronDown,
+  ExternalLink,
   FileText,
   Globe,
   Info,
@@ -14,7 +16,6 @@ import {
   Store,
   UserRound,
   Vault,
-  Wallet,
 } from "lucide-react";
 
 import {
@@ -30,7 +31,9 @@ import {
   Textarea,
 } from "../components/ui";
 import { formatEscrowError } from "../error-format";
-import { makeEscrowLock } from "../studio";
+import { resolveDefaultArbitrator } from "../config/deployments";
+import { createExplorerTxUrl, makeEscrowLock } from "../studio";
+import { makeLiveEscrowId } from "./contract";
 import { storedScriptFromScriptLike } from "./registry";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
@@ -57,8 +60,10 @@ export function CreateEscrowProduct() {
     service,
     status: workspaceStatus,
     saveParticipantScript,
+    refreshEscrows,
   } = useProductWorkspaceContext();
   const [useCustomArbitrator, setUseCustomArbitrator] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [sellerAddress, setSellerAddress] = useState("");
   const [amountCkb, setAmountCkb] = useState("350");
   const [deadline, setDeadline] = useState("");
@@ -66,9 +71,18 @@ export function CreateEscrowProduct() {
   const [description, setDescription] = useState("Landing page redesign and responsive polish for the first milestone.");
   const [platformArbitratorAddress, setPlatformArbitratorAddress] = useState("");
   const [customArbitratorAddress, setCustomArbitratorAddress] = useState("");
-  const [status, setStatus] = useState("Fill the form, connect a wallet, and save participant scripts before funding.");
+  const [status, setStatus] = useState("Fill the form, connect a buyer wallet, and submit a live escrow on testnet.");
   const [busy, setBusy] = useState(false);
   const [lastTxHash, setLastTxHash] = useState("");
+  const [lastEscrowId, setLastEscrowId] = useState("");
+
+  useEffect(() => {
+    if (useCustomArbitrator) {
+      return;
+    }
+
+    setPlatformArbitratorAddress(resolveDefaultArbitrator(network));
+  }, [network, useCustomArbitrator]);
 
   const activeArbitratorAddress = useCustomArbitrator ? customArbitratorAddress : platformArbitratorAddress;
 
@@ -102,27 +116,21 @@ export function CreateEscrowProduct() {
   }
 
   async function saveParticipantScripts() {
-    try {
-      setBusy(true);
-      const { buyerScript, sellerScript, arbitratorScript } = await resolveScripts();
-      const buyerStored = storedScriptFromScriptLike(buyerScript, "Buyer");
-      const sellerStored = storedScriptFromScriptLike(sellerScript, "Seller");
-      const arbitratorStored = storedScriptFromScriptLike(arbitratorScript, useCustomArbitrator ? "Custom arbitrator" : "Platform arbitrator");
-      saveParticipantScript(ccc.Script.from(buyerScript).hash(), buyerStored);
-      saveParticipantScript(ccc.Script.from(sellerScript).hash(), sellerStored);
-      saveParticipantScript(ccc.Script.from(arbitratorScript).hash(), arbitratorStored);
-      setStatus("Participant scripts saved locally. Settlement flows can now reuse them later.");
-    } catch (error) {
-      const { detail, hint } = formatEscrowError(error);
-      setStatus(hint ? `${detail} ${hint}` : detail);
-    } finally {
-      setBusy(false);
-    }
+    const { buyerScript, sellerScript, arbitratorScript } = await resolveScripts();
+    const buyerStored = storedScriptFromScriptLike(buyerScript, "Buyer");
+    const sellerStored = storedScriptFromScriptLike(sellerScript, "Seller");
+    const arbitratorStored = storedScriptFromScriptLike(
+      arbitratorScript,
+      useCustomArbitrator ? "Custom arbitrator" : "Platform arbitrator",
+    );
+    saveParticipantScript(ccc.Script.from(buyerScript).hash(), buyerStored);
+    saveParticipantScript(ccc.Script.from(sellerScript).hash(), sellerStored);
+    saveParticipantScript(ccc.Script.from(arbitratorScript).hash(), arbitratorStored);
   }
 
   async function createEscrow() {
     if (!service) {
-      setStatus(`Connect a wallet. If this persists, ${network} escrow deployment is not configured for this app yet.`);
+      setStatus(`Connect a buyer wallet. If this persists, ${network} escrow deployment is not configured for this app yet.`);
       return;
     }
 
@@ -136,7 +144,7 @@ export function CreateEscrowProduct() {
       const { sellerScript, arbitratorScript } = await resolveScripts();
       const amountShannons = parseCkbToShannons(amountCkb);
       const deadlineMs = BigInt(new Date(deadline).getTime());
-      if (deadlineMs <= 0) {
+      if (deadlineMs <= BigInt(Date.now())) {
         throw new Error("Deadline must be a valid future date/time.");
       }
 
@@ -152,8 +160,10 @@ export function CreateEscrowProduct() {
       });
 
       await saveParticipantScripts();
+      await refreshEscrows();
       setLastTxHash(txHash);
-      setStatus(`Create escrow submitted on ${network}.`);
+      setLastEscrowId(makeLiveEscrowId(txHash, "0"));
+      setStatus(`Create escrow submitted on ${network}. The dashboard can now refresh against live cells.`);
     } catch (error) {
       const { detail, hint } = formatEscrowError(error);
       setStatus(hint ? `${detail} ${hint}` : detail);
@@ -175,7 +185,7 @@ export function CreateEscrowProduct() {
           <CardHeader>
             <CardTitle className="text-2xl">Create a New Escrow</CardTitle>
             <CardDescription>
-              This flow uses real participant addresses and the connected buyer wallet. Protocol deployment metadata is provided by the app for the active network.
+              This is the standalone buyer flow: real participant addresses, a connected buyer wallet, and deployment metadata provided by the app for the active network.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -186,7 +196,7 @@ export function CreateEscrowProduct() {
                 className={`rounded-[1.25rem] border p-4 text-left transition ${network === "testnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Testnet</span></div>
-                <p className="text-sm text-muted-foreground">Use `ckt` participant addresses and configured testnet deployment metadata.</p>
+                <p className="text-sm text-muted-foreground">Default buyer-facing network with live deployment metadata already bundled into the app.</p>
               </button>
               <button
                 type="button"
@@ -194,7 +204,7 @@ export function CreateEscrowProduct() {
                 className={`rounded-[1.25rem] border p-4 text-left transition ${network === "mainnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Mainnet</span></div>
-                <p className="text-sm text-muted-foreground">Use `ckb` participant addresses once mainnet deployment metadata is configured.</p>
+                <p className="text-sm text-muted-foreground">Structurally supported, but it stays gated here until complete production deployment metadata is ready.</p>
               </button>
             </div>
 
@@ -218,7 +228,7 @@ export function CreateEscrowProduct() {
                 </Badge>
               </div>
               <p className="text-sm leading-6 text-muted-foreground">
-                Use the wallet control in the navbar to select the buyer signer. This form funds the escrow once the app has deployment metadata for the active network.
+                Use the wallet control in the navbar to select the buyer signer. Buyers never enter protocol lock or type metadata manually in this flow.
               </p>
             </div>
 
@@ -250,7 +260,7 @@ export function CreateEscrowProduct() {
               <CardHeader>
                 <CardTitle className="text-base">Arbitrator</CardTitle>
                 <CardDescription>
-                  The product still supports a platform-default arbitrator, but the address needs to be real for the active network.
+                  Use a platform arbitrator by default for the simplest MVP flow, or switch to a custom arbitrator when you need it.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -276,36 +286,42 @@ export function CreateEscrowProduct() {
               </CardContent>
             </Card>
 
-            <Card className="border-dashed bg-secondary/40 shadow-none">
-              <CardHeader>
-                <CardTitle className="text-base">Protocol lock</CardTitle>
-                <CardDescription>
-                  The escrow cell lock script is read from app deployment config, so buyers do not enter protocol hashes manually.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
-                <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Escrow lock</p>
-                  <p className="break-all text-foreground">{deployment.escrowLockCodeHash || "Not configured"}</p>
-                  <p className="mt-2 break-all">Args: {deployment.escrowLockArgs || "0x"}</p>
-                </div>
-                {!deploymentReady ? (
-                  <p className="text-destructive">
-                    {network} escrow deployment is not configured for this app build yet.
+            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-3 text-left"
+                onClick={() => setShowAdvanced((value) => !value)}
+              >
+                <div>
+                  <p className="font-medium text-foreground">Advanced deployment details</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Buyers usually do not need this. The product reads escrow lock metadata from typed frontend config.
                   </p>
-                ) : null}
-              </CardContent>
-            </Card>
+                </div>
+                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
+              </button>
+              {showAdvanced ? (
+                <div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+                  <div className="rounded-[1.25rem] border border-border bg-secondary/40 p-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Escrow lock</p>
+                    <p className="break-all text-foreground">{deployment.escrowLockCodeHash || "Not configured"}</p>
+                    <p className="mt-2 break-all">Args: {deployment.escrowLockArgs || "0x"}</p>
+                  </div>
+                  {!deploymentReady ? (
+                    <p className="text-destructive">
+                      {network} escrow deployment is not configured for this app build yet.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
 
             <div className="flex flex-wrap gap-3">
-              <Button size="lg" variant="outline" disabled={!formReady || busy} onClick={() => void saveParticipantScripts()}>
-                Save Participant Scripts
-              </Button>
               <Button size="lg" disabled={!formReady || !deploymentReady || busy} onClick={() => void createEscrow()}>
-                Create & Fund Escrow
+                {busy ? "Submitting escrow..." : "Create & Fund Escrow"}
               </Button>
-              <Button asChild size="lg" variant="outline">
-                <Link href="/studio">Open Developer Studio</Link>
+              <Button size="lg" variant="outline" onClick={() => void refreshEscrows()} disabled={!deploymentReady || busy}>
+                Refresh dashboard
               </Button>
             </div>
           </CardContent>
@@ -315,7 +331,7 @@ export function CreateEscrowProduct() {
           <CardHeader>
             <CardTitle>Buyer Checklist</CardTitle>
             <CardDescription>
-              Real wallet first, then real addresses, then contract-valid scripts.
+              Real buyer wallet first, then real participant addresses, then a live escrow on the selected network.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
@@ -324,22 +340,37 @@ export function CreateEscrowProduct() {
               <ul className="space-y-2">
                 <li>Connect the buyer wallet that will fund the escrow.</li>
                 <li>Use `ckt` addresses on testnet and `ckb` addresses on mainnet.</li>
-                <li>Save participant scripts so later release and resolution flows can work in-product.</li>
+                <li>Choose a real arbitrator address or keep the platform arbitrator if one is configured.</li>
               </ul>
             </div>
             <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-              <p className="mb-2 font-medium text-foreground">Protocol constraints</p>
+              <p className="mb-2 font-medium text-foreground">MVP help</p>
               <ul className="space-y-2">
-                <li>The contract stores participant lock hashes in escrow data.</li>
-                <li>The create flow derives the escrow cell lock from the active deployment profile.</li>
-                <li>Mainnet and testnet must use separate deployments and addresses.</li>
+                <li>Funds live inside escrow cells on CKB, not in an admin balance.</li>
+                <li>Participant roles are matched by lock hash from the connected wallet.</li>
+                <li>Some later settlement paths still need the full recipient script or header context.</li>
               </ul>
             </div>
             <div className="rounded-[1.25rem] border border-dashed border-primary/20 bg-primary/5 p-4">
               <div className="mb-2 flex items-center gap-2 text-primary"><AlertTriangle className="h-4 w-4" /><strong>Status</strong></div>
               <p>{status}</p>
               <p className="mt-2 text-xs">Workspace: {workspaceStatus}</p>
-              {lastTxHash ? <p className="mt-2 break-all text-xs">Last transaction: {lastTxHash}</p> : null}
+              {lastTxHash ? (
+                <div className="mt-3 flex flex-col gap-3">
+                  <p className="break-all text-xs">Last transaction: {lastTxHash}</p>
+                  <Button asChild variant="outline" className="justify-between">
+                    <Link href={createExplorerTxUrl(lastTxHash, network)} target="_blank" rel="noreferrer">
+                      View on explorer
+                      <ExternalLink className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link href={`/escrows/${encodeURIComponent(lastEscrowId)}`}>
+                      Open escrow detail
+                    </Link>
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </CardContent>
         </Card>

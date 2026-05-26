@@ -17,6 +17,11 @@ const STATIC_DEPLOYMENTS: Record<CkbNetwork, DeploymentFormState> = {
   mainnet: initialDeployment,
 };
 
+const STATIC_DEFAULT_ARBITRATORS: Record<CkbNetwork, string> = {
+  testnet: "",
+  mainnet: "",
+};
+
 const ENV_PREFIXES: Record<CkbNetwork, DeploymentEnvPrefix> = {
   testnet: "TESTNET",
   mainnet: "MAINNET",
@@ -62,6 +67,10 @@ function hasStoredDeploymentOverride(network: CkbNetwork): boolean {
   return isDeploymentReady(stored);
 }
 
+function defaultArbitratorFromEnv(network: CkbNetwork): string {
+  return envValue(ENV_PREFIXES[network], "DEFAULT_ARBITRATOR");
+}
+
 export function resolveProductDeployment(network: CkbNetwork): DeploymentFormState {
   const envDeployment = deploymentFromEnv(network);
   if (isDeploymentReady(envDeployment)) {
@@ -78,6 +87,10 @@ export function resolveProductDeployment(network: CkbNetwork): DeploymentFormSta
   }
 
   return initialDeployment;
+}
+
+export function resolveDefaultArbitrator(network: CkbNetwork): string {
+  return defaultArbitratorFromEnv(network) || STATIC_DEFAULT_ARBITRATORS[network] || "";
 }
 
 export function hasConfiguredProductDeployment(network: CkbNetwork): boolean {

@@ -33,6 +33,7 @@ export function ProductNavbarWallet() {
     deploymentReady,
     isFetchingEscrows,
     activeLockHash,
+    status,
   } = useProductWorkspaceContext();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -158,7 +159,7 @@ export function ProductNavbarWallet() {
                   )}
                 >
                   <div className="mb-1.5 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Testnet</span></div>
-                  <p className="text-xs leading-5 text-muted-foreground">ckt addresses and test deployment.</p>
+                  <p className="text-xs leading-5 text-muted-foreground">ckt addresses and live buyer-facing deployment.</p>
                 </button>
                 <button
                   type="button"
@@ -169,7 +170,7 @@ export function ProductNavbarWallet() {
                   )}
                 >
                   <div className="mb-1.5 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Mainnet</span></div>
-                  <p className="text-xs leading-5 text-muted-foreground">ckb addresses and main deployment.</p>
+                  <p className="text-xs leading-5 text-muted-foreground">Structured support only until deployment metadata is complete.</p>
                 </button>
               </div>
 
@@ -233,6 +234,16 @@ export function ProductNavbarWallet() {
                 </div>
               ) : null}
 
+              <div className="rounded-[0.9rem] border border-border/70 bg-white/80 p-2.5 text-xs leading-5 text-muted-foreground">
+                {status}
+              </div>
+
+              {isFetchingEscrows ? (
+                <div className="rounded-[0.9rem] border border-dashed border-primary/25 bg-primary/5 p-2.5 text-xs leading-5 text-muted-foreground">
+                  Refreshing live escrow discovery for the selected network.
+                </div>
+              ) : null}
+
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button asChild variant="outline" className="justify-center">
                   <Link href="/">
@@ -241,7 +252,7 @@ export function ProductNavbarWallet() {
                   </Link>
                 </Button>
                 <Button asChild variant="outline" className="justify-center">
-                  <Link href="/studio">Open Studio</Link>
+                  <Link href="/escrows/create">Create escrow</Link>
                 </Button>
               </div>
             </div>
