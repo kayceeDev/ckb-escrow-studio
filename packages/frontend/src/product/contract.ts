@@ -242,7 +242,7 @@ export function guidanceForEscrow(
             : "Wait for the seller to mark the escrow as delivered, or cancel before work advances.",
           detail:
             "Buyer funds are already locked on chain in the escrow cell. The seller must mark delivery before release or dispute actions appear.",
-          supportLabel: deadlineReached ? "Refund needs settlement support this week." : undefined,
+          ...(deadlineReached ? { supportLabel: "Refund needs settlement support this week." } : {}),
         };
       }
       if (viewerRole === "seller") {
