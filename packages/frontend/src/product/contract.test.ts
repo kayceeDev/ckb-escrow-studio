@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getActionViews, getViewerRole } from "./contract";
+import { getActionViews, getViewerRole, guidanceForEscrow } from "./contract";
 
 describe("product contract helpers", () => {
   const escrow = {
@@ -35,5 +35,15 @@ describe("product contract helpers", () => {
       "ResolveToSeller",
     ]);
     expect(getActionViews(disputed, "buyer")).toHaveLength(0);
+  });
+
+  it("adds buyer-first guidance for funded and delivered escrows", () => {
+    const fundedGuidance = guidanceForEscrow(escrow, "buyer");
+    expect(fundedGuidance.summary).toContain("Refund window");
+    expect(fundedGuidance.nextStep).toContain("cancel");
+
+    const deliveredGuidance = guidanceForEscrow({ ...escrow, state: "Delivered" as const }, "buyer");
+    expect(deliveredGuidance.summary).toContain("Buyer decision");
+    expect(deliveredGuidance.supportLabel).toContain("Release");
   });
 });

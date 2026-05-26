@@ -1,11 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { AlertTriangle, ArrowRight, CalendarClock, CircleHelp, RefreshCcw, Scale, ShieldCheck, Store, Wallet } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CalendarClock,
+  CircleHelp,
+  ExternalLink,
+  RefreshCcw,
+  Scale,
+  ShieldCheck,
+  Store,
+  Wallet,
+} from "lucide-react";
 
 import { formatEscrowError } from "../error-format";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "../components/ui";
+import { createExplorerTxUrl } from "../studio";
 import { ProductActionView, ProductEscrowRecord, makeLiveEscrowId, toLiveProductEscrow } from "./contract";
 import { type StoredParticipantScript } from "./registry";
 import { createEscrowInput } from "./utils";
@@ -35,7 +47,7 @@ function ParticipantScriptEditor({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="font-medium text-foreground">{title}</p>
-          <p className="text-xs text-muted-foreground break-all">{lockHash}</p>
+          <p className="break-all text-xs text-muted-foreground">{lockHash}</p>
         </div>
         <Badge variant={storedScript ? "success" : "outline"}>{storedScript ? "Script saved" : "Script missing"}</Badge>
       </div>
@@ -102,12 +114,15 @@ function canExecuteInProduct(
 
 export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const {
+    network,
     walletState,
     deployment,
     deploymentReady,
     escrows,
     refreshEscrows,
     isFetchingEscrows,
+    hasFetchedEscrows,
+    escrowFetchError,
     activeLockHash,
     service,
     participantScripts,
@@ -116,6 +131,15 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const [status, setStatus] = useState<string>("Idle");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [lastTxHash, setLastTxHash] = useState<string>("");
+  const [showScripts, setShowScripts] = useState(false);
+
+  useEffect(() => {
+    if (!deploymentReady || isFetchingEscrows || hasFetchedEscrows) {
+      return;
+    }
+
+    void refreshEscrows();
+  }, [deploymentReady, hasFetchedEscrows, isFetchingEscrows, refreshEscrows]);
 
   const liveItem = escrows.find((escrow) => makeLiveEscrowId(escrow.txHash, escrow.index) === escrowId);
   const record = useMemo(() => {
@@ -171,7 +195,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           break;
         }
         default:
-          throw new Error(`${action} still requires Studio support.`);
+          throw new Error(`${action} still requires settlement support this week.`);
       }
 
       setLastTxHash(txHash);
@@ -185,15 +209,57 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     }
   }
 
-  if (!record && isFetchingEscrows) {
+  if (!deploymentReady) {
     return (
       <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
         <Card>
           <CardContent className="space-y-4 p-8">
-            <p className="text-lg font-semibold">Loading escrow</p>
+            <p className="text-lg font-semibold">{network} deployment is unavailable</p>
+            <p className="text-sm text-muted-foreground">
+              This detail route needs complete deployment metadata for the selected network before live escrow data can be resolved.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Button asChild>
+                <Link href="/">Back home</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!record && (isFetchingEscrows || !hasFetchedEscrows)) {
+    return (
+      <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
+        <Card>
+          <CardContent className="space-y-4 p-8">
+            <p className="text-lg font-semibold">Loading live escrow</p>
             <p className="text-sm text-muted-foreground">
               Fetching live escrow cells for the current network before deciding whether this route exists.
             </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!record && escrowFetchError) {
+    return (
+      <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
+        <Card>
+          <CardContent className="space-y-4 p-8">
+            <p className="text-lg font-semibold">Could not load this escrow yet</p>
+            <p className="text-sm text-muted-foreground">{escrowFetchError}</p>
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={() => void refreshEscrows()} disabled={isFetchingEscrows}>
+                <RefreshCcw className="h-4 w-4" />
+                {isFetchingEscrows ? "Retrying..." : "Retry fetch"}
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/">Back home</Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -205,13 +271,18 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
         <Card>
           <CardContent className="space-y-4 p-8">
-            <p className="text-lg font-semibold">Escrow not found</p>
+            <p className="text-lg font-semibold">Escrow not found on this network</p>
             <p className="text-sm text-muted-foreground">
-              This route does not match a fetched live escrow for the current network. Refresh escrows, confirm the network, or open it from the dashboard after discovery completes.
+              We refreshed live escrows for {network}, but this `txHash:index` route was not present in the fetched result set. Confirm the network and retry discovery before assuming the escrow is missing.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Button asChild><Link href="/">Back home</Link></Button>
-              <Button asChild variant="outline"><Link href="/studio">Open Studio</Link></Button>
+              <Button onClick={() => void refreshEscrows()} disabled={isFetchingEscrows}>
+                <RefreshCcw className="h-4 w-4" />
+                {isFetchingEscrows ? "Refreshing..." : "Refresh escrows"}
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/">Back home</Link>
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -239,9 +310,14 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                 <RefreshCcw className="h-4 w-4" />
                 Refresh state
               </Button>
-              <Button asChild variant="outline">
-                <Link href="/studio">Open Studio</Link>
-              </Button>
+              {lastTxHash ? (
+                <Button asChild variant="outline">
+                  <Link href={createExplorerTxUrl(lastTxHash, network)} target="_blank" rel="noreferrer">
+                    View transaction
+                    <ExternalLink className="h-4 w-4" />
+                  </Link>
+                </Button>
+              ) : null}
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -261,18 +337,26 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-[1.25rem] border border-border bg-secondary/55 p-4 text-sm text-muted-foreground">
-                <div className="mb-2 flex items-center gap-2 text-primary"><CircleHelp className="h-4 w-4" /><strong>Your role</strong></div>
-                <p>
-                  {record.viewerRole === "viewer"
-                    ? "This wallet is not a participant in the escrow, so the page stays read-only."
-                    : `The connected wallet matches the escrow's ${record.viewerRole} lock hash, so the actions shown here follow that role.`}
-                </p>
+              <div className="rounded-[1.25rem] border border-primary/20 bg-primary/6 p-4 text-sm text-muted-foreground">
+                <div className="mb-2 flex items-center gap-2 text-primary"><CircleHelp className="h-4 w-4" /><strong>What happens next</strong></div>
+                <p className="font-medium text-foreground">{record.guidance.summary}</p>
+                <p className="mt-2 leading-6">{record.guidance.nextStep}</p>
+                <p className="mt-2 text-xs leading-5">{record.guidance.detail}</p>
+                {record.guidance.supportLabel ? (
+                  <p className="mt-3 rounded-xl border border-dashed border-border bg-white/70 px-3 py-2 text-xs leading-5">
+                    {record.guidance.supportLabel}
+                  </p>
+                ) : null}
               </div>
               <div className="rounded-[1.25rem] border border-border bg-secondary/55 p-4 text-sm text-muted-foreground">
-                <div className="mb-2 flex items-center gap-2 text-primary"><ShieldCheck className="h-4 w-4" /><strong>Contract alignment</strong></div>
+                <div className="mb-2 flex items-center gap-2 text-primary"><ShieldCheck className="h-4 w-4" /><strong>Your role</strong></div>
                 <p>
-                  These actions mirror the current contract: seller can deliver from Funded, buyer can cancel/refund, buyer or seller can dispute from Delivered, and arbitrator resolves Disputed escrows.
+                  {record.viewerRole === "viewer"
+                    ? "This wallet does not match a participant lock hash, so the detail page stays read-only until you switch wallets."
+                    : `The connected wallet matches the escrow's ${record.viewerRole} lock hash, so the actions shown here follow that role.`}
+                </p>
+                <p className="mt-3 text-xs leading-5">
+                  Roles are discovered from on-chain lock hashes, not from usernames or off-chain accounts.
                 </p>
               </div>
             </div>
@@ -321,9 +405,9 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Relevant actions</CardTitle>
+            <CardTitle>Available actions</CardTitle>
             <CardDescription>
-              Only actions allowed by the current contract state and connected role are shown.
+              Direct actions come first. Advanced settlement paths stay visible with clear limitations instead of failing silently.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -343,25 +427,29 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
 
                 return (
                   <div key={action.action} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                    <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="font-medium text-foreground">{action.label}</p>
                         <p className="mt-1 text-sm leading-6 text-muted-foreground">{action.description}</p>
                       </div>
-                      <Badge variant={inProduct ? "success" : "outline"}>{inProduct ? "In product" : "Studio"}</Badge>
+                      <Badge variant={inProduct ? "success" : action.mode === "direct" ? "secondary" : "outline"}>
+                        {inProduct ? "Ready in product" : action.mode === "direct" ? "Needs signer context" : "Settlement support needed"}
+                      </Badge>
                     </div>
                     <div className="flex flex-wrap gap-3">
-                      {inProduct ? (
-                        <Button disabled={busyAction !== null || !action.enabled} onClick={() => void runAction(action.action)}>
-                          {busyAction === action.action ? "Submitting..." : action.label}
-                        </Button>
-                      ) : null}
-                      <Button asChild variant="outline">
-                        <Link href="/studio">
-                          {inProduct ? "Advanced controls" : "Open in Studio"}
-                          <ArrowRight className="h-4 w-4" />
-                        </Link>
+                      <Button
+                        disabled={!inProduct || busyAction !== null || !action.enabled}
+                        onClick={() => void runAction(action.action)}
+                      >
+                        {busyAction === action.action ? "Submitting..." : action.label}
                       </Button>
+                      {!inProduct ? (
+                        <p className="self-center text-xs leading-5 text-muted-foreground">
+                          {action.mode === "studio"
+                            ? "This action still needs recipient script or settlement context before we can run it directly here."
+                            : "Reconnect the correct participant wallet to enable this action in-product."}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -371,7 +459,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
             <div className="rounded-[1.25rem] border border-dashed border-primary/25 bg-primary/5 p-4 text-sm leading-6 text-muted-foreground">
               <div className="mb-2 flex items-center gap-2 text-primary"><AlertTriangle className="h-4 w-4" /><strong>Why lock scripts matter</strong></div>
               <p>
-                The contract stores participant <strong className="text-foreground">lock hashes</strong> on chain. Settlement actions like release and dispute resolution need the recipient's full lock script off chain, so the product keeps a local registry of those scripts instead of guessing.
+                The contract stores participant <strong className="text-foreground">lock hashes</strong> on chain. Settlement actions like release, refund, and dispute resolution still need the recipient's full lock script off chain, so the product keeps a local registry of those scripts instead of guessing.
               </p>
             </div>
 
@@ -384,32 +472,40 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
         </Card>
 
         <Card className="xl:col-span-2">
-          <CardHeader>
-            <CardTitle>Participant lock scripts</CardTitle>
-            <CardDescription>
-              Save the full buyer, seller, or arbitrator lock script here so settlement actions can be built directly from the product surface.
-            </CardDescription>
+          <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle>Participant lock scripts</CardTitle>
+              <CardDescription>
+                Save the full buyer, seller, or arbitrator lock script here so settlement actions can be built directly from the product surface.
+              </CardDescription>
+            </div>
+            <Button variant="outline" onClick={() => setShowScripts((value) => !value)}>
+              {showScripts ? "Hide script editor" : "Show script editor"}
+              <ArrowRight className={`h-4 w-4 transition-transform ${showScripts ? "rotate-90" : ""}`} />
+            </Button>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-3">
-            <ParticipantScriptEditor
-              title={record.buyerLabel}
-              lockHash={record.buyerLockHash}
-              storedScript={participantScripts[record.buyerLockHash]}
-              onSave={saveParticipantScript}
-            />
-            <ParticipantScriptEditor
-              title={record.sellerLabel}
-              lockHash={record.sellerLockHash}
-              storedScript={participantScripts[record.sellerLockHash]}
-              onSave={saveParticipantScript}
-            />
-            <ParticipantScriptEditor
-              title={record.arbitratorLabel}
-              lockHash={record.arbitratorLockHash}
-              storedScript={participantScripts[record.arbitratorLockHash]}
-              onSave={saveParticipantScript}
-            />
-          </CardContent>
+          {showScripts ? (
+            <CardContent className="grid gap-4 md:grid-cols-3">
+              <ParticipantScriptEditor
+                title={record.buyerLabel}
+                lockHash={record.buyerLockHash}
+                storedScript={participantScripts[record.buyerLockHash]}
+                onSave={saveParticipantScript}
+              />
+              <ParticipantScriptEditor
+                title={record.sellerLabel}
+                lockHash={record.sellerLockHash}
+                storedScript={participantScripts[record.sellerLockHash]}
+                onSave={saveParticipantScript}
+              />
+              <ParticipantScriptEditor
+                title={record.arbitratorLabel}
+                lockHash={record.arbitratorLockHash}
+                storedScript={participantScripts[record.arbitratorLockHash]}
+                onSave={saveParticipantScript}
+              />
+            </CardContent>
+          ) : null}
         </Card>
       </div>
     </div>

@@ -96,6 +96,8 @@ export function useProductWorkspace() {
   );
   const [escrows, setEscrows] = useState<EscrowListItem[]>([]);
   const [isFetchingEscrows, setIsFetchingEscrows] = useState(false);
+  const [hasFetchedEscrows, setHasFetchedEscrows] = useState(false);
+  const [escrowFetchError, setEscrowFetchError] = useState<string | null>(null);
   const [status, setStatus] = useState("Idle");
   const [activeLockHash, setActiveLockHash] = useState<string | null>(null);
   const [participantScripts, setParticipantScripts] = useState<ParticipantScriptRegistry>(() =>
@@ -111,41 +113,45 @@ export function useProductWorkspace() {
       return;
     }
 
-    setStatus(`Refreshing ${network} wallets...`);
-    controllerRef.current.disconnect();
-    await controllerRef.current.refresh(client, (wallets) => {
-      const storedSigner = loadStoredActiveSigner();
-      const restoredSigner =
-        storedSigner?.network === network
-          ? wallets
-              .flatMap((wallet) =>
-                wallet.signers.map((signerInfo) => ({
-                  walletName: wallet.name,
-                  signerName: signerInfo.name,
-                  signer: signerInfo.signer,
-                })),
-              )
-              .find(
-                (option) =>
-                  option.walletName === storedSigner.walletName &&
-                  option.signerName === storedSigner.signerName,
-              )
-          : undefined;
+    try {
+      setStatus(`Refreshing ${network} wallets...`);
+      controllerRef.current.disconnect();
+      await controllerRef.current.refresh(client, (wallets) => {
+        const storedSigner = loadStoredActiveSigner();
+        const restoredSigner =
+          storedSigner?.network === network
+            ? wallets
+                .flatMap((wallet) =>
+                  wallet.signers.map((signerInfo) => ({
+                    walletName: wallet.name,
+                    signerName: signerInfo.name,
+                    signer: signerInfo.signer,
+                  })),
+                )
+                .find(
+                  (option) =>
+                    option.walletName === storedSigner.walletName &&
+                    option.signerName === storedSigner.signerName,
+                )
+            : undefined;
 
-      setWalletState((current) => ({
-        wallets,
-        activeSigner:
-          current.activeSigner &&
-          wallets.some((wallet) =>
-            wallet.signers.some((signerInfo) => signerInfo.signer === current.activeSigner),
-          )
-            ? current.activeSigner
-            : restoredSigner?.signer
-              ? restoredSigner.signer
-            : null,
-      }));
-    });
-    setStatus(`Wallet discovery finished for ${network}.`);
+        setWalletState((current) => ({
+          wallets,
+          activeSigner:
+            current.activeSigner &&
+            wallets.some((wallet) =>
+              wallet.signers.some((signerInfo) => signerInfo.signer === current.activeSigner),
+            )
+              ? current.activeSigner
+              : restoredSigner?.signer
+                ? restoredSigner.signer
+                : null,
+        }));
+      });
+      setStatus(`Wallet discovery finished for ${network}.`);
+    } catch (error) {
+      setStatus(`Wallet discovery failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }, [client, network]);
 
   useEffect(() => {
@@ -170,6 +176,12 @@ export function useProductWorkspace() {
         const nextNetwork = loadNetwork();
         setNetworkState(nextNetwork);
         setDeployment(resolveProductDeployment(nextNetwork));
+        setWalletState({ wallets: [], activeSigner: null });
+        setActiveLockHash(null);
+        setEscrows([]);
+        setHasFetchedEscrows(false);
+        setEscrowFetchError(null);
+        restoredSignerRef.current = null;
       }
     }
 
@@ -208,17 +220,24 @@ export function useProductWorkspace() {
   const refreshEscrows = useCallback(async () => {
     if (!isDeploymentReady(deployment)) {
       setEscrows([]);
+      setHasFetchedEscrows(false);
+      setEscrowFetchError(null);
       return;
     }
 
     try {
       setIsFetchingEscrows(true);
+      setEscrowFetchError(null);
       setStatus(`Fetching ${network} escrow cells...`);
       const fetched = await fetchEscrowCellsByType(deployment, 48, client);
       setEscrows(fetched);
+      setHasFetchedEscrows(true);
       setStatus(`Fetched ${fetched.length} ${network} escrow cell(s).`);
     } catch (error) {
-      setStatus(`Escrow fetch failed: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      setEscrowFetchError(message);
+      setHasFetchedEscrows(true);
+      setStatus(`Escrow fetch failed: ${message}`);
     } finally {
       setIsFetchingEscrows(false);
     }
@@ -227,7 +246,12 @@ export function useProductWorkspace() {
   useEffect(() => {
     if (isDeploymentReady(deployment)) {
       void refreshEscrows();
+      return;
     }
+
+    setEscrows([]);
+    setHasFetchedEscrows(false);
+    setEscrowFetchError(null);
   }, [deployment, refreshEscrows]);
 
   const service = useMemo(
@@ -294,11 +318,13 @@ export function useProductWorkspace() {
     }
     setNetworkState(nextNetwork);
     setDeployment(resolveProductDeployment(nextNetwork));
-    setEscrows([]);
-    clearStoredActiveSigner();
-    restoredSignerRef.current = null;
     setWalletState({ wallets: [], activeSigner: null });
     setActiveLockHash(null);
+    setEscrows([]);
+    setHasFetchedEscrows(false);
+    setEscrowFetchError(null);
+    restoredSignerRef.current = null;
+    setStatus(`Switched to ${nextNetwork}. Refreshing wallet and escrow context...`);
   }, []);
 
   useEffect(() => {
@@ -340,6 +366,7 @@ export function useProductWorkspace() {
       .catch(() => {
         clearStoredActiveSigner();
         restoredSignerRef.current = null;
+        setStatus(`Could not restore the previous ${network} wallet. Choose a signer to continue.`);
         setWalletState((current) =>
           current.activeSigner === activeSigner ? { ...current, activeSigner: null } : current,
         );
@@ -370,6 +397,8 @@ export function useProductWorkspace() {
     deploymentReady: isDeploymentReady(deployment),
     escrows,
     isFetchingEscrows,
+    hasFetchedEscrows,
+    escrowFetchError,
     refreshEscrows,
     status,
     activeLockHash,
