@@ -336,6 +336,15 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
               </div>
             </div>
 
+            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4 text-sm text-muted-foreground">
+              <p>
+                <strong className="text-foreground">Assigned arbitrator:</strong> {record.arbitratorLabel}
+              </p>
+              <p className="mt-2 leading-6">
+                The platform assigned this arbitrator when the escrow was created, and that lock hash is now fixed in the on-chain escrow data.
+              </p>
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               <div className="rounded-[1.25rem] border border-primary/20 bg-primary/6 p-4 text-sm text-muted-foreground">
                 <div className="mb-2 flex items-center gap-2 text-primary"><CircleHelp className="h-4 w-4" /><strong>What happens next</strong></div>
@@ -379,7 +388,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                 </Badge>
               </div>
               <p className="text-sm leading-6 text-muted-foreground">
-                The selected signer is matched against the buyer, seller, and arbitrator lock hashes. Switch wallets from the top-right control if this page is read-only.
+                The selected signer is matched against the buyer, seller, and assigned arbitrator lock hashes. Switch wallets from the top-right control if this page is read-only.
               </p>
             </div>
           </CardContent>
@@ -476,7 +485,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
             <div>
               <CardTitle>Participant lock scripts</CardTitle>
               <CardDescription>
-                Save the full buyer, seller, or arbitrator lock script here so settlement actions can be built directly from the product surface.
+                Save the full buyer, seller, or assigned arbitrator lock script here so settlement actions can be built directly from the product surface.
               </CardDescription>
             </div>
             <Button variant="outline" onClick={() => setShowScripts((value) => !value)}>

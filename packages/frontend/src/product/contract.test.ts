@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getActionViews, getViewerRole, guidanceForEscrow } from "./contract";
+import { hasActiveArbitratorPool, selectAssignedArbitrator, type ProductArbitratorConfig } from "../config/deployments";
 
 describe("product contract helpers", () => {
   const escrow = {
@@ -45,5 +46,94 @@ describe("product contract helpers", () => {
     const deliveredGuidance = guidanceForEscrow({ ...escrow, state: "Delivered" as const }, "buyer");
     expect(deliveredGuidance.summary).toContain("Buyer decision");
     expect(deliveredGuidance.supportLabel).toContain("Release");
+  });
+});
+
+describe("product arbitrator assignment", () => {
+  const pool: ProductArbitratorConfig[] = [
+    {
+      id: "arb-1",
+      label: "Arbitrator One",
+      address: "ckt1qyqszqgpqyqszqgpqyqszqgpqyqszqgp5x9l5u",
+      active: true,
+    },
+    {
+      id: "arb-2",
+      label: "Arbitrator Two",
+      address: "ckt1qyqgqqqqqqqqqqqqqqqqqqqqqqqqqqqqq7d4d9",
+      active: true,
+    },
+    {
+      id: "arb-3",
+      label: "Inactive Arbitrator",
+      address: "ckt1qyq0qqqqqqqqqqqqqqqqqqqqqqqqqqqqqj4k4n",
+      active: false,
+    },
+  ];
+
+  it("returns an active arbitrator for deterministic assignment", () => {
+    const selection = selectAssignedArbitrator({
+      network: "testnet",
+      buyerLockHash: "0xabc123",
+      sellerAddress: "ckt1qexample",
+      referenceId: "INV-001",
+      pool,
+    });
+
+    expect(selection).not.toBeNull();
+    expect(selection?.active).toBe(true);
+    expect(selection?.id).not.toBe("arb-3");
+  });
+
+  it("returns the same arbitrator for the same deterministic inputs", () => {
+    const first = selectAssignedArbitrator({
+      network: "testnet",
+      buyerLockHash: "0xabc123",
+      sellerAddress: "ckt1qexample",
+      referenceId: "INV-001",
+      pool,
+    });
+    const second = selectAssignedArbitrator({
+      network: "testnet",
+      buyerLockHash: "0xabc123",
+      sellerAddress: "ckt1qexample",
+      referenceId: "INV-001",
+      pool,
+    });
+
+    expect(first?.id).toBe(second?.id);
+  });
+
+  it("can rotate assignment when deterministic inputs change", () => {
+    const first = selectAssignedArbitrator({
+      network: "testnet",
+      buyerLockHash: "0xabc123",
+      sellerAddress: "ckt1qexample",
+      referenceId: "INV-001",
+      pool,
+    });
+    const second = selectAssignedArbitrator({
+      network: "testnet",
+      buyerLockHash: "0xabc123",
+      sellerAddress: "ckt1qexample",
+      referenceId: "INV-002",
+      pool,
+    });
+
+    expect([first?.id, second?.id].every(Boolean)).toBe(true);
+  });
+
+  it("reports missing active pool correctly", () => {
+    expect(hasActiveArbitratorPool("testnet", pool)).toBe(true);
+    expect(
+      hasActiveArbitratorPool("testnet", [
+        {
+          id: "arb-off",
+          label: "Offline Arbitrator",
+          address: "ckt1qinactive",
+          active: false,
+        },
+      ]),
+    ).toBe(false);
   });
 });

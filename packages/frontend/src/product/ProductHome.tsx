@@ -165,10 +165,10 @@ export function ProductHome() {
 
             <div className="space-y-4">
               <h1 className="max-w-[14ch] font-serif text-4xl font-semibold leading-[0.98] tracking-tight text-balance md:text-6xl xl:max-w-[14ch] xl:text-[4.8rem] 2xl:text-[5.4rem]">
-                Live CKB escrow for buyers, sellers, and arbitrators.
+                Live CKB escrow with platform-assigned dispute protection.
               </h1>
               <p className="max-w-[58ch] text-base leading-8 text-muted-foreground md:text-lg xl:text-[1.2rem] xl:leading-9">
-                Connect once from the navbar, stay on the right network, and discover only the live escrows your wallet can act on.
+                Connect once from the navbar, stay on the right network, and discover only the live escrows your wallet can act on as buyer, seller, or assigned arbitrator.
               </p>
             </div>
 
@@ -254,7 +254,7 @@ export function ProductHome() {
           { title: "Needs your action", value: String(needsAction.length), body: "Escrows where your connected role can act right now." },
           { title: "As buyer", value: String(buyerEscrows.length), body: "Escrows where your wallet is the buyer." },
           { title: "As seller", value: String(sellerEscrows.length), body: "Escrows where your wallet is the seller." },
-          { title: "As arbitrator", value: String(arbitratorEscrows.length), body: "Disputes your wallet can resolve." },
+          { title: "As arbitrator", value: String(arbitratorEscrows.length), body: "Disputes your assigned arbitrator wallet can resolve." },
         ].map((item) => (
           <Card key={item.title}>
             <CardContent className="space-y-2 p-6">
@@ -269,7 +269,7 @@ export function ProductHome() {
       <section className="mb-12 space-y-5">
         <SectionHeader
           title="Live escrows for your connected wallet"
-          body="These lists are filtered by the same participant lock hashes the contract enforces on chain. No seeded previews are mixed into this dashboard."
+          body="These lists are filtered by the same participant lock hashes the contract enforces on chain. No seeded previews are mixed into this dashboard, and arbitrator discovery is based on the assigned arbitrator lock hash stored at create time."
         />
 
         {!deploymentReady ? (
@@ -308,7 +308,7 @@ export function ProductHome() {
             <CardContent className="space-y-3 p-6 text-sm text-muted-foreground">
               <p className="text-lg font-semibold text-foreground">Connect a wallet to discover live escrows</p>
               <p>
-                Once a signer is connected from the navbar, this dashboard will group live escrows by whether your wallet is the buyer, seller, or arbitrator.
+                Once a signer is connected from the navbar, this dashboard will group live escrows by whether your wallet is the buyer, seller, or platform-assigned arbitrator.
               </p>
             </CardContent>
           </Card>
@@ -349,7 +349,7 @@ export function ProductHome() {
             />
             <EscrowGrid
               title="As arbitrator"
-              body="Disputes your connected wallet can help resolve."
+              body="Disputes your connected assigned-arbitrator wallet can help resolve."
               records={arbitratorEscrows}
             />
           </div>
@@ -371,7 +371,7 @@ export function ProductHome() {
             {[
               {
                 title: "How does the buyer create an escrow?",
-                body: "Connect the buyer wallet, fill seller, arbitrator, amount, deadline, and description, then submit from the create page.",
+                body: "Connect the buyer wallet, fill seller, amount, deadline, and description, then let the app assign a platform arbitrator automatically before you submit.",
               },
               {
                 title: "How does the seller move it forward?",
@@ -383,7 +383,7 @@ export function ProductHome() {
               },
               {
                 title: "How does the arbitrator resolve?",
-                body: "Arbitrators only act on disputed escrows and need the recipient lock script saved locally before settlement can be built.",
+                body: "The assigned arbitrator wallet sees disputed escrows under the arbitrator view and can resolve them once the recipient lock script is available.",
               },
             ].map((item) => (
               <div key={item.title} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
@@ -404,7 +404,7 @@ export function ProductHome() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <p>
-                Testnet is the default buyer-facing network until mainnet deployment metadata is fully ready.
+                Testnet is the default buyer-facing network until mainnet deployment metadata and active production arbitrators are fully ready.
               </p>
               <div className="flex flex-col gap-3">
                 <Button asChild variant="outline" className="justify-between">
@@ -427,7 +427,7 @@ export function ProductHome() {
             {[
               {
                 title: "For Buyers",
-                body: "Funds live in escrow cells on chain until the state machine allows release, cancellation, refund, or dispute.",
+                body: "Funds live in escrow cells on chain until the state machine allows release, cancellation, refund, or dispute. Arbitration is assigned by the platform before create.",
                 icon: <CheckCircle2 className="h-5 w-5 text-primary" />,
               },
               {
@@ -437,7 +437,7 @@ export function ProductHome() {
               },
               {
                 title: "For Arbitrators",
-                body: "Some settlement actions still need the full recipient script off chain, which is why the product stores participant scripts locally.",
+                body: "Assigned arbitrators are fixed in escrow data at creation time, then discovered later through the same on-chain lock-hash matching used for buyers and sellers.",
                 icon: <ShieldCheck className="h-5 w-5 text-primary" />,
               },
             ].map((item) => (

@@ -3,6 +3,24 @@ import type { CkbNetwork, DeploymentFormState } from "../types";
 
 type DeploymentEnvPrefix = "TESTNET" | "MAINNET";
 
+export interface ProductArbitratorConfig {
+  id: string;
+  label: string;
+  address: string;
+  active: boolean;
+  specialty?: string;
+  weight?: number;
+}
+
+export interface ProductArbitratorSelectionInput {
+  buyerLockHash: string;
+  dateBucket?: string;
+  network: CkbNetwork;
+  pool?: ProductArbitratorConfig[];
+  referenceId?: string;
+  sellerAddress: string;
+}
+
 const STATIC_DEPLOYMENTS: Record<CkbNetwork, DeploymentFormState> = {
   testnet: {
     codeHash: "0xcd5061b3db81563eed169d78258f1214394a77c4e267ede8388efbd647c1b15a",
@@ -17,9 +35,9 @@ const STATIC_DEPLOYMENTS: Record<CkbNetwork, DeploymentFormState> = {
   mainnet: initialDeployment,
 };
 
-const STATIC_DEFAULT_ARBITRATORS: Record<CkbNetwork, string> = {
-  testnet: "",
-  mainnet: "",
+const STATIC_ARBITRATOR_POOLS: Record<CkbNetwork, ProductArbitratorConfig[]> = {
+  testnet: [],
+  mainnet: [],
 };
 
 const ENV_PREFIXES: Record<CkbNetwork, DeploymentEnvPrefix> = {
@@ -71,6 +89,37 @@ function defaultArbitratorFromEnv(network: CkbNetwork): string {
   return envValue(ENV_PREFIXES[network], "DEFAULT_ARBITRATOR");
 }
 
+function envArbitratorPool(network: CkbNetwork): ProductArbitratorConfig[] {
+  const address = defaultArbitratorFromEnv(network).trim();
+  if (!address) {
+    return [];
+  }
+
+  return [
+    {
+      id: `${network}-platform-default`,
+      label: "Platform arbitrator",
+      address,
+      active: true,
+    },
+  ];
+}
+
+function isActiveArbitrator(entry: ProductArbitratorConfig): boolean {
+  return entry.active && entry.address.trim().length > 0;
+}
+
+function stableHash(seed: string): number {
+  let hash = 2166136261;
+
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
 export function resolveProductDeployment(network: CkbNetwork): DeploymentFormState {
   const envDeployment = deploymentFromEnv(network);
   if (isDeploymentReady(envDeployment)) {
@@ -89,8 +138,48 @@ export function resolveProductDeployment(network: CkbNetwork): DeploymentFormSta
   return initialDeployment;
 }
 
+export function resolveArbitratorPool(network: CkbNetwork): ProductArbitratorConfig[] {
+  const envPool = envArbitratorPool(network);
+  if (envPool.length > 0) {
+    return envPool;
+  }
+
+  return STATIC_ARBITRATOR_POOLS[network];
+}
+
+export function hasActiveArbitratorPool(
+  network: CkbNetwork,
+  pool: ProductArbitratorConfig[] = resolveArbitratorPool(network),
+): boolean {
+  return pool.some(isActiveArbitrator);
+}
+
 export function resolveDefaultArbitrator(network: CkbNetwork): string {
-  return defaultArbitratorFromEnv(network) || STATIC_DEFAULT_ARBITRATORS[network] || "";
+  return resolveArbitratorPool(network).find(isActiveArbitrator)?.address ?? "";
+}
+
+export function selectAssignedArbitrator({
+  buyerLockHash,
+  dateBucket,
+  network,
+  pool = resolveArbitratorPool(network),
+  referenceId,
+  sellerAddress,
+}: ProductArbitratorSelectionInput): ProductArbitratorConfig | null {
+  const activePool = pool.filter(isActiveArbitrator);
+  if (activePool.length === 0) {
+    return null;
+  }
+
+  const assignmentSeed = [
+    network,
+    buyerLockHash.trim().toLowerCase(),
+    sellerAddress.trim().toLowerCase(),
+    referenceId?.trim() || dateBucket?.trim() || new Date().toISOString().slice(0, 10),
+  ].join("|");
+
+  const selectedIndex = stableHash(assignmentSeed) % activePool.length;
+  return activePool[selectedIndex] ?? null;
 }
 
 export function hasConfiguredProductDeployment(network: CkbNetwork): boolean {

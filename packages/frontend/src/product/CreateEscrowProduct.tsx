@@ -14,7 +14,6 @@ import {
   Scale,
   ShieldCheck,
   Store,
-  UserRound,
   Vault,
 } from "lucide-react";
 
@@ -31,7 +30,12 @@ import {
   Textarea,
 } from "../components/ui";
 import { formatEscrowError } from "../error-format";
-import { resolveDefaultArbitrator } from "../config/deployments";
+import {
+  hasActiveArbitratorPool,
+  resolveArbitratorPool,
+  selectAssignedArbitrator,
+  type ProductArbitratorConfig,
+} from "../config/deployments";
 import { createExplorerTxUrl, makeEscrowLock } from "../studio";
 import { makeLiveEscrowId } from "./contract";
 import { storedScriptFromScriptLike } from "./registry";
@@ -49,6 +53,14 @@ function parseCkbToShannons(value: string): bigint {
   return BigInt(whole) * 100_000_000n + BigInt((fraction + "00000000").slice(0, 8));
 }
 
+function useAssignedArbitratorLabel(arbitrator: ProductArbitratorConfig | null): string {
+  if (!arbitrator) {
+    return "No arbitrator assigned";
+  }
+
+  return arbitrator.label || "Platform arbitrator assigned";
+}
+
 export function CreateEscrowProduct() {
   const {
     network,
@@ -62,29 +74,49 @@ export function CreateEscrowProduct() {
     saveParticipantScript,
     refreshEscrows,
   } = useProductWorkspaceContext();
-  const [useCustomArbitrator, setUseCustomArbitrator] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [sellerAddress, setSellerAddress] = useState("");
   const [amountCkb, setAmountCkb] = useState("350");
   const [deadline, setDeadline] = useState("");
   const [referenceId, setReferenceId] = useState("INV-042");
   const [description, setDescription] = useState("Landing page redesign and responsive polish for the first milestone.");
-  const [platformArbitratorAddress, setPlatformArbitratorAddress] = useState("");
-  const [customArbitratorAddress, setCustomArbitratorAddress] = useState("");
   const [status, setStatus] = useState("Fill the form, connect a buyer wallet, and submit a live escrow on testnet.");
   const [busy, setBusy] = useState(false);
   const [lastTxHash, setLastTxHash] = useState("");
   const [lastEscrowId, setLastEscrowId] = useState("");
+  const [assignedArbitrator, setAssignedArbitrator] = useState<ProductArbitratorConfig | null>(null);
+
+  const arbitratorPool = useMemo(() => resolveArbitratorPool(network), [network]);
+  const hasAvailableArbitratorPool = useMemo(
+    () => hasActiveArbitratorPool(network, arbitratorPool),
+    [arbitratorPool, network],
+  );
+  const assignedArbitratorLabel = useAssignedArbitratorLabel(assignedArbitrator);
 
   useEffect(() => {
-    if (useCustomArbitrator) {
-      return;
+    async function assignArbitrator() {
+      if (!walletState.activeSigner || !sellerAddress.trim() || !hasAvailableArbitratorPool) {
+        setAssignedArbitrator(null);
+        return;
+      }
+
+      try {
+        const buyerAddress = await walletState.activeSigner.getRecommendedAddressObj();
+        const selection = selectAssignedArbitrator({
+          network,
+          buyerLockHash: ccc.Script.from(buyerAddress.script).hash(),
+          sellerAddress,
+          referenceId,
+          pool: arbitratorPool,
+        });
+        setAssignedArbitrator(selection);
+      } catch {
+        setAssignedArbitrator(null);
+      }
     }
 
-    setPlatformArbitratorAddress(resolveDefaultArbitrator(network));
-  }, [network, useCustomArbitrator]);
-
-  const activeArbitratorAddress = useCustomArbitrator ? customArbitratorAddress : platformArbitratorAddress;
+    void assignArbitrator();
+  }, [arbitratorPool, hasAvailableArbitratorPool, network, referenceId, sellerAddress, walletState.activeSigner]);
 
   const formReady = useMemo(
     () =>
@@ -94,9 +126,9 @@ export function CreateEscrowProduct() {
           amountCkb &&
           deadline &&
           description &&
-          activeArbitratorAddress,
+          assignedArbitrator,
       ),
-    [activeArbitratorAddress, amountCkb, deadline, description, sellerAddress, walletState.activeSigner],
+    [amountCkb, assignedArbitrator, deadline, description, sellerAddress, walletState.activeSigner],
   );
 
   async function resolveScripts() {
@@ -104,9 +136,13 @@ export function CreateEscrowProduct() {
       throw new Error("Connect the buyer wallet first.");
     }
 
+    if (!assignedArbitrator) {
+      throw new Error("No active arbitrator is available for this network.");
+    }
+
     const buyerAddress = await walletState.activeSigner.getRecommendedAddressObj();
     const seller = await ccc.Address.fromString(sellerAddress, client);
-    const arbitrator = await ccc.Address.fromString(activeArbitratorAddress, client);
+    const arbitrator = await ccc.Address.fromString(assignedArbitrator.address, client);
 
     return {
       buyerScript: buyerAddress.script,
@@ -121,7 +157,7 @@ export function CreateEscrowProduct() {
     const sellerStored = storedScriptFromScriptLike(sellerScript, "Seller");
     const arbitratorStored = storedScriptFromScriptLike(
       arbitratorScript,
-      useCustomArbitrator ? "Custom arbitrator" : "Platform arbitrator",
+      assignedArbitrator?.label || "Platform arbitrator",
     );
     saveParticipantScript(ccc.Script.from(buyerScript).hash(), buyerStored);
     saveParticipantScript(ccc.Script.from(sellerScript).hash(), sellerStored);
@@ -136,6 +172,11 @@ export function CreateEscrowProduct() {
 
     if (!deploymentReady) {
       setStatus(`${network} escrow deployment is unavailable in this app build.`);
+      return;
+    }
+
+    if (!hasAvailableArbitratorPool || !assignedArbitrator) {
+      setStatus(`Arbitration unavailable on ${network}. Add at least one active platform arbitrator before creating escrows.`);
       return;
     }
 
@@ -163,7 +204,7 @@ export function CreateEscrowProduct() {
       await refreshEscrows();
       setLastTxHash(txHash);
       setLastEscrowId(makeLiveEscrowId(txHash, "0"));
-      setStatus(`Create escrow submitted on ${network}. The dashboard can now refresh against live cells.`);
+      setStatus(`Create escrow submitted on ${network} with ${assignedArbitratorLabel}. The dashboard can now refresh against live cells.`);
     } catch (error) {
       const { detail, hint } = formatEscrowError(error);
       setStatus(hint ? `${detail} ${hint}` : detail);
@@ -185,7 +226,7 @@ export function CreateEscrowProduct() {
           <CardHeader>
             <CardTitle className="text-2xl">Create a New Escrow</CardTitle>
             <CardDescription>
-              This is the standalone buyer flow: real participant addresses, a connected buyer wallet, and deployment metadata provided by the app for the active network.
+              This is the standalone buyer flow: real participant addresses, a connected buyer wallet, deployment metadata provided by the app, and automatic platform arbitrator assignment for the active network.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -196,7 +237,7 @@ export function CreateEscrowProduct() {
                 className={`rounded-[1.25rem] border p-4 text-left transition ${network === "testnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Testnet</span></div>
-                <p className="text-sm text-muted-foreground">Default buyer-facing network with live deployment metadata already bundled into the app.</p>
+                <p className="text-sm text-muted-foreground">Default buyer-facing network with live deployment metadata and platform-managed arbitration.</p>
               </button>
               <button
                 type="button"
@@ -204,7 +245,7 @@ export function CreateEscrowProduct() {
                 className={`rounded-[1.25rem] border p-4 text-left transition ${network === "mainnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Mainnet</span></div>
-                <p className="text-sm text-muted-foreground">Structurally supported, but it stays gated here until complete production deployment metadata is ready.</p>
+                <p className="text-sm text-muted-foreground">Structurally supported, but it stays gated until complete production deployment metadata and active arbitrators are ready.</p>
               </button>
             </div>
 
@@ -214,7 +255,7 @@ export function CreateEscrowProduct() {
                 <span className="text-sm font-semibold">What happens next?</span>
               </div>
               <p className="text-sm leading-6 text-muted-foreground">
-                Once funded, the escrow stays in a <strong className="text-foreground">Funded</strong> state until the seller marks it delivered or the buyer chooses another valid action path.
+                Once funded, the escrow stays in a <strong className="text-foreground">Funded</strong> state until the seller marks it delivered or the buyer chooses another valid action path. The app assigns a platform arbitrator automatically before create.
               </p>
             </div>
 
@@ -226,9 +267,12 @@ export function CreateEscrowProduct() {
                 <Badge variant={deploymentReady ? "success" : "destructive"}>
                   {deploymentReady ? `${network} deployment ready` : `No ${network} deployment`}
                 </Badge>
+                <Badge variant={hasAvailableArbitratorPool ? "success" : "destructive"}>
+                  {hasAvailableArbitratorPool ? "Arbitration ready" : "Arbitration unavailable"}
+                </Badge>
               </div>
               <p className="text-sm leading-6 text-muted-foreground">
-                Use the wallet control in the navbar to select the buyer signer. Buyers never enter protocol lock or type metadata manually in this flow.
+                Use the wallet control in the navbar to select the buyer signer. Buyers never enter protocol metadata or choose arbitrators manually in this flow.
               </p>
             </div>
 
@@ -258,30 +302,25 @@ export function CreateEscrowProduct() {
 
             <Card className="border-dashed bg-secondary/50 shadow-none">
               <CardHeader>
-                <CardTitle className="text-base">Arbitrator</CardTitle>
+                <CardTitle className="text-base">Platform arbitrator assignment</CardTitle>
                 <CardDescription>
-                  Use a platform arbitrator by default for the simplest MVP flow, or switch to a custom arbitrator when you need it.
+                  Buyers do not pick arbitrators here. The product automatically selects one active platform arbitrator for the current network using deterministic rotation.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]"><ShieldCheck className="h-4 w-4" />Platform Arbitrator Address</Label>
-                  <Input value={platformArbitratorAddress} onChange={(event) => setPlatformArbitratorAddress(event.target.value)} placeholder={network === "testnet" ? "ckt1..." : "ckb1..."} />
+                <div className="rounded-[1.25rem] border border-border bg-white/80 p-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Assigned arbitrator</p>
+                  <p className="font-medium text-foreground">{assignedArbitratorLabel}</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    {assignedArbitrator
+                      ? `${assignedArbitrator.address} will be committed into escrow data at creation time.`
+                      : `No active arbitrator is currently configured for ${network}.`}
+                  </p>
                 </div>
-
-                <Button
-                  variant="outline"
-                  type="button"
-                  onClick={() => setUseCustomArbitrator((value) => !value)}
-                >
-                  {useCustomArbitrator ? "Use Platform Arbitrator" : "Use Custom Arbitrator"}
-                </Button>
-
-                {useCustomArbitrator ? (
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]"><UserRound className="h-4 w-4" />Custom Arbitrator Address</Label>
-                    <Input value={customArbitratorAddress} onChange={(event) => setCustomArbitratorAddress(event.target.value)} placeholder={network === "testnet" ? "ckt1..." : "ckb1..."} />
-                  </div>
+                {!hasAvailableArbitratorPool ? (
+                  <p className="text-sm text-destructive">
+                    Arbitration unavailable on this network. Add at least one active arbitrator before creating new escrows.
+                  </p>
                 ) : null}
               </CardContent>
             </Card>
@@ -317,7 +356,7 @@ export function CreateEscrowProduct() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Button size="lg" disabled={!formReady || !deploymentReady || busy} onClick={() => void createEscrow()}>
+              <Button size="lg" disabled={!formReady || !deploymentReady || !hasAvailableArbitratorPool || busy} onClick={() => void createEscrow()}>
                 {busy ? "Submitting escrow..." : "Create & Fund Escrow"}
               </Button>
               <Button size="lg" variant="outline" onClick={() => void refreshEscrows()} disabled={!deploymentReady || busy}>
@@ -331,7 +370,7 @@ export function CreateEscrowProduct() {
           <CardHeader>
             <CardTitle>Buyer Checklist</CardTitle>
             <CardDescription>
-              Real buyer wallet first, then real participant addresses, then a live escrow on the selected network.
+              Real buyer wallet first, then seller and order details, then a live escrow with a platform-assigned arbitrator.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
@@ -340,7 +379,7 @@ export function CreateEscrowProduct() {
               <ul className="space-y-2">
                 <li>Connect the buyer wallet that will fund the escrow.</li>
                 <li>Use `ckt` addresses on testnet and `ckb` addresses on mainnet.</li>
-                <li>Choose a real arbitrator address or keep the platform arbitrator if one is configured.</li>
+                <li>The app assigns a vetted platform arbitrator automatically for the selected network.</li>
               </ul>
             </div>
             <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
@@ -348,7 +387,7 @@ export function CreateEscrowProduct() {
               <ul className="space-y-2">
                 <li>Funds live inside escrow cells on CKB, not in an admin balance.</li>
                 <li>Participant roles are matched by lock hash from the connected wallet.</li>
-                <li>Some later settlement paths still need the full recipient script or header context.</li>
+                <li>The arbitrator is fixed at creation time, so the platform assigns one before the transaction is built.</li>
               </ul>
             </div>
             <div className="rounded-[1.25rem] border border-dashed border-primary/20 bg-primary/5 p-4">
@@ -358,6 +397,7 @@ export function CreateEscrowProduct() {
               {lastTxHash ? (
                 <div className="mt-3 flex flex-col gap-3">
                   <p className="break-all text-xs">Last transaction: {lastTxHash}</p>
+                  <p className="text-xs">Assigned arbitrator: {assignedArbitratorLabel}</p>
                   <Button asChild variant="outline" className="justify-between">
                     <Link href={createExplorerTxUrl(lastTxHash, network)} target="_blank" rel="noreferrer">
                       View on explorer
