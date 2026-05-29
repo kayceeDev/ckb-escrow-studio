@@ -36,7 +36,14 @@ const STATIC_DEPLOYMENTS: Record<CkbNetwork, DeploymentFormState> = {
 };
 
 const STATIC_ARBITRATOR_POOLS: Record<CkbNetwork, ProductArbitratorConfig[]> = {
-  testnet: [],
+  testnet: [
+    {
+      id: "testnet-platform-arbitrator-1",
+      label: "Platform arbitrator",
+      address: "ckt1qrfrwcdnvssswdwpn3s9v8fp87emat306ctjwsm3nmlkjg8qyza2cqgqq93scsruacxnredg6waz09a7gj2urcs57uvdsqw3",
+      active: true,
+    },
+  ],
   mainnet: [],
 };
 
