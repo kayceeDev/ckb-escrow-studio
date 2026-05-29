@@ -221,7 +221,7 @@ export function CreateEscrowProduct() {
         <Badge variant="outline" className="capitalize">{network}</Badge>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] xl:items-start">
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl">Create a New Escrow</CardTitle>
@@ -237,7 +237,7 @@ export function CreateEscrowProduct() {
                 className={`rounded-[1.25rem] border p-4 text-left transition ${network === "testnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Testnet</span></div>
-                <p className="text-sm text-muted-foreground">Default buyer-facing network with live deployment metadata and platform-managed arbitration.</p>
+                <p className="text-sm leading-6 text-muted-foreground">Default buyer-facing network with live deployment metadata and platform-managed arbitration.</p>
               </button>
               <button
                 type="button"
@@ -245,7 +245,7 @@ export function CreateEscrowProduct() {
                 className={`rounded-[1.25rem] border p-4 text-left transition ${network === "mainnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Mainnet</span></div>
-                <p className="text-sm text-muted-foreground">Structurally supported, but it stays gated until complete production deployment metadata and active arbitrators are ready.</p>
+                <p className="text-sm leading-6 text-muted-foreground">Structurally supported, but it stays gated until complete production deployment metadata and active arbitrators are ready.</p>
               </button>
             </div>
 
@@ -311,7 +311,7 @@ export function CreateEscrowProduct() {
                 <div className="rounded-[1.25rem] border border-border bg-white/80 p-4">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Assigned arbitrator</p>
                   <p className="font-medium text-foreground">{assignedArbitratorLabel}</p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  <p className="mt-2 break-all text-sm leading-6 text-muted-foreground">
                     {assignedArbitrator
                       ? `${assignedArbitrator.address} will be committed into escrow data at creation time.`
                       : `No active arbitrator is currently configured for ${network}.`}

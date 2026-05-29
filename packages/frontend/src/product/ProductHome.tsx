@@ -46,9 +46,9 @@ function EscrowGrid({
   return (
     <section className="space-y-5">
       <SectionHeader title={title} body={body} />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 xl:items-stretch">
         {records.map((escrow) => (
-          <Card key={escrow.id} className="overflow-hidden">
+          <Card key={escrow.id} className="flex h-full flex-col overflow-hidden">
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <CardTitle className="text-lg leading-7">{escrow.title}</CardTitle>
@@ -66,7 +66,7 @@ function EscrowGrid({
               </div>
               <CardDescription>{escrow.description}</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="flex h-full flex-col space-y-4">
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline">{escrow.viewerRole}</Badge>
                 <Badge variant="outline">{escrow.actions.length} action path(s)</Badge>
@@ -103,12 +103,14 @@ function EscrowGrid({
                 ) : null}
               </div>
 
-              <Button asChild className="w-full">
-                <Link href={`/escrows/${encodeURIComponent(escrow.id)}`}>
-                  Open Escrow
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
+              <div className="mt-auto pt-1">
+                <Button asChild className="w-full">
+                  <Link href={`/escrows/${encodeURIComponent(escrow.id)}`}>
+                    Open Escrow
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ))}

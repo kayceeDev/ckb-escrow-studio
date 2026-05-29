@@ -494,7 +494,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
             </Button>
           </CardHeader>
           {showScripts ? (
-            <CardContent className="grid gap-4 md:grid-cols-3">
+            <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               <ParticipantScriptEditor
                 title={record.buyerLabel}
                 lockHash={record.buyerLockHash}
