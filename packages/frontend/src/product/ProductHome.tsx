@@ -240,12 +240,6 @@ export function ProductHome() {
                   Start buyer flow
                 </Link>
               </Button>
-              <Button asChild variant="outline">
-                <Link href="/studio">
-                  <LayoutPanelTop className="h-4 w-4" />
-                  Open Studio
-                </Link>
-              </Button>
             </div>
           </CardContent>
         </Card>

@@ -16,7 +16,6 @@ export const metadata: Metadata = {
 const navItems = [
   { href: "/", label: "Home" },
   { href: "/escrows/create", label: "Create" },
-  { href: "/studio", label: "Studio" },
 ];
 
 export default function RootLayout({
@@ -62,14 +61,11 @@ export default function RootLayout({
             <footer className="border-t border-border/80 bg-background/70">
               <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 px-4 py-6 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between md:px-6">
                 <p>
-                  Buyer-first escrow experience on CKB, with studio tools kept available for deployment and protocol operations.
+                  Buyer-first escrow experience on CKB with platform-assigned dispute protection for buyers, sellers, and arbitrators.
                 </p>
                 <div className="flex items-center gap-3">
                   <Link className="hover:text-foreground" href="/escrows/create">
                     Create Escrow
-                  </Link>
-                  <Link className="hover:text-foreground" href="/studio">
-                    Studio
                   </Link>
                 </div>
               </div>

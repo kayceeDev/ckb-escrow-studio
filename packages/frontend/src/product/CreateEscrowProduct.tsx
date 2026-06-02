@@ -6,7 +6,6 @@ import * as ccc from "@ckb-ccc/ccc";
 import {
   AlertTriangle,
   CalendarClock,
-  ChevronDown,
   ExternalLink,
   FileText,
   Globe,
@@ -74,7 +73,6 @@ export function CreateEscrowProduct() {
     saveParticipantScript,
     refreshEscrows,
   } = useProductWorkspaceContext();
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [sellerAddress, setSellerAddress] = useState("");
   const [amountCkb, setAmountCkb] = useState("350");
   const [deadline, setDeadline] = useState("");
@@ -201,10 +199,15 @@ export function CreateEscrowProduct() {
       });
 
       await saveParticipantScripts();
-      await refreshEscrows();
+      const refreshedEscrows = await refreshEscrows();
+      const createdEscrow = refreshedEscrows.find((escrow) => escrow.txHash === txHash);
       setLastTxHash(txHash);
-      setLastEscrowId(makeLiveEscrowId(txHash, "0"));
-      setStatus(`Create escrow submitted on ${network} with ${assignedArbitratorLabel}. The dashboard can now refresh against live cells.`);
+      setLastEscrowId(createdEscrow ? makeLiveEscrowId(createdEscrow.txHash, createdEscrow.index) : "");
+      setStatus(
+        createdEscrow
+          ? `Create escrow submitted on ${network} with ${assignedArbitratorLabel}. The live escrow detail is now ready.`
+          : `Create escrow submitted on ${network} with ${assignedArbitratorLabel}. The dashboard can now refresh against live cells.`,
+      );
     } catch (error) {
       const { detail, hint } = formatEscrowError(error);
       setStatus(hint ? `${detail} ${hint}` : detail);
@@ -325,36 +328,6 @@ export function CreateEscrowProduct() {
               </CardContent>
             </Card>
 
-            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-3 text-left"
-                onClick={() => setShowAdvanced((value) => !value)}
-              >
-                <div>
-                  <p className="font-medium text-foreground">Advanced deployment details</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Buyers usually do not need this. The product reads escrow lock metadata from typed frontend config.
-                  </p>
-                </div>
-                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
-              </button>
-              {showAdvanced ? (
-                <div className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
-                  <div className="rounded-[1.25rem] border border-border bg-secondary/40 p-4">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Escrow lock</p>
-                    <p className="break-all text-foreground">{deployment.escrowLockCodeHash || "Not configured"}</p>
-                    <p className="mt-2 break-all">Args: {deployment.escrowLockArgs || "0x"}</p>
-                  </div>
-                  {!deploymentReady ? (
-                    <p className="text-destructive">
-                      {network} escrow deployment is not configured for this app build yet.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-
             <div className="flex flex-wrap gap-3">
               <Button size="lg" disabled={!formReady || !deploymentReady || !hasAvailableArbitratorPool || busy} onClick={() => void createEscrow()}>
                 {busy ? "Submitting escrow..." : "Create & Fund Escrow"}
@@ -404,11 +377,17 @@ export function CreateEscrowProduct() {
                       <ExternalLink className="h-4 w-4" />
                     </Link>
                   </Button>
-                  <Button asChild variant="outline">
-                    <Link href={`/escrows/${encodeURIComponent(lastEscrowId)}`}>
-                      Open escrow detail
-                    </Link>
-                  </Button>
+                  {lastEscrowId ? (
+                    <Button asChild variant="outline">
+                      <Link href={`/escrows/${encodeURIComponent(lastEscrowId)}`}>
+                        Open escrow detail
+                      </Link>
+                    </Button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Waiting for live escrow discovery before opening the detail page.
+                    </p>
+                  )}
                 </div>
               ) : null}
             </div>

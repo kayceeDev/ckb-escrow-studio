@@ -222,7 +222,7 @@ export function useProductWorkspace() {
       setEscrows([]);
       setHasFetchedEscrows(false);
       setEscrowFetchError(null);
-      return;
+      return [] as EscrowListItem[];
     }
 
     try {
@@ -233,11 +233,13 @@ export function useProductWorkspace() {
       setEscrows(fetched);
       setHasFetchedEscrows(true);
       setStatus(`Fetched ${fetched.length} ${network} escrow cell(s).`);
+      return fetched;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setEscrowFetchError(message);
       setHasFetchedEscrows(true);
       setStatus(`Escrow fetch failed: ${message}`);
+      return [] as EscrowListItem[];
     } finally {
       setIsFetchingEscrows(false);
     }

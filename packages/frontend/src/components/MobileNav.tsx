@@ -77,7 +77,6 @@ export function MobileNav({ items }: MobileNavProps) {
               <span className={cn("text-xs", active ? "text-primary-foreground/80" : "text-muted-foreground")}>
                 {item.href === "/" && "Live dashboard and role-based escrows"}
                 {item.href === "/escrows/create" && "Start a new protected payment flow"}
-                {item.href === "/studio" && "Operator tools, deployment, and diagnostics"}
               </span>
             </div>
             <MoveRight className={cn("h-4 w-4 transition-transform group-hover:translate-x-0.5", active ? "text-primary-foreground" : "text-muted-foreground")} />
