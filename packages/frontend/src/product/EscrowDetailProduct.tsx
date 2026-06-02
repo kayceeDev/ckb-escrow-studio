@@ -141,7 +141,20 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     void refreshEscrows();
   }, [deploymentReady, hasFetchedEscrows, isFetchingEscrows, refreshEscrows]);
 
-  const liveItem = escrows.find((escrow) => makeLiveEscrowId(escrow.txHash, escrow.index) === escrowId);
+  const [routeTxHash] = escrowId.split(":");
+  const liveItem = useMemo(() => {
+    const exactMatch = escrows.find((escrow) => makeLiveEscrowId(escrow.txHash, escrow.index) === escrowId);
+    if (exactMatch) {
+      return exactMatch;
+    }
+
+    const txHashMatches = escrows.filter((escrow) => escrow.txHash === routeTxHash);
+    if (txHashMatches.length === 1) {
+      return txHashMatches[0] ?? null;
+    }
+
+    return null;
+  }, [escrowId, escrows, routeTxHash]);
   const record = useMemo(() => {
     if (liveItem) {
       return toLiveProductEscrow(liveItem, activeLockHash);
