@@ -105,7 +105,7 @@ function EscrowGrid({
 
               <div className="mt-auto pt-1">
                 <Button asChild className="w-full">
-                  <Link href={`/escrows/${encodeURIComponent(escrow.id)}`}>
+                  <Link href={`/escrows/${encodeURIComponent(escrow.source === "live" ? escrow.id.split(":")[0] ?? escrow.id : escrow.id)}`}>
                     Open Escrow
                     <ArrowRight className="h-4 w-4" />
                   </Link>
