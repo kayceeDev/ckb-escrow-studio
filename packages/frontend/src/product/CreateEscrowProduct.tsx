@@ -302,30 +302,11 @@ export function CreateEscrowProduct() {
               <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the service, milestone, or goods being escrowed." />
             </div>
 
-            <Card className="border-dashed bg-secondary/50 shadow-none">
-              <CardHeader>
-                <CardTitle className="text-base">Platform arbitrator assignment</CardTitle>
-                <CardDescription>
-                  Buyers do not pick arbitrators here. The product automatically selects one active platform arbitrator for the current network using deterministic rotation.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-[1.25rem] border border-border bg-white/80 p-4">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Assigned arbitrator</p>
-                  <p className="font-medium text-foreground">{assignedArbitratorLabel}</p>
-                  <p className="mt-2 break-all text-sm leading-6 text-muted-foreground">
-                    {assignedArbitrator
-                      ? `${assignedArbitrator.address} will be committed into escrow data at creation time.`
-                      : `No active arbitrator is currently configured for ${network}.`}
-                  </p>
-                </div>
-                {!hasAvailableArbitratorPool ? (
-                  <p className="text-sm text-destructive">
-                    Arbitration unavailable on this network. Add at least one active arbitrator before creating new escrows.
-                  </p>
-                ) : null}
-              </CardContent>
-            </Card>
+            {!hasAvailableArbitratorPool ? (
+              <div className="rounded-[1.25rem] border border-destructive/20 bg-destructive/5 p-4 text-sm leading-6 text-destructive">
+                Escrow creation is unavailable on this network because dispute protection is not configured yet.
+              </div>
+            ) : null}
 
             <div className="flex flex-wrap gap-3">
               <Button size="lg" disabled={!formReady || !deploymentReady || !hasAvailableArbitratorPool || busy} onClick={() => void createEscrow()}>
