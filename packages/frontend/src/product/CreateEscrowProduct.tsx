@@ -36,7 +36,6 @@ import {
   type ProductArbitratorConfig,
 } from "../config/deployments";
 import { createExplorerTxUrl, makeEscrowLock } from "../studio";
-import { makeLiveEscrowId } from "./contract";
 import { storedScriptFromScriptLike } from "./registry";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
@@ -202,7 +201,7 @@ export function CreateEscrowProduct() {
       const refreshedEscrows = await refreshEscrows();
       const createdEscrow = refreshedEscrows.find((escrow) => escrow.txHash === txHash);
       setLastTxHash(txHash);
-      setLastEscrowId(createdEscrow ? makeLiveEscrowId(createdEscrow.txHash, createdEscrow.index) : "");
+      setLastEscrowId(createdEscrow ? createdEscrow.txHash : txHash);
       setStatus(
         createdEscrow
           ? `Create escrow submitted on ${network} with ${assignedArbitratorLabel}. The live escrow detail is now ready.`
