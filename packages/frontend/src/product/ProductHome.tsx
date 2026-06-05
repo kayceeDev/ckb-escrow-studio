@@ -136,9 +136,9 @@ export function ProductHome() {
   const liveRecords = escrows.map((escrow) => toLiveProductEscrow(escrow, activeLockHash));
   const actorEscrows = liveRecords.filter((escrow) => escrow.viewerRole !== "viewer");
   const needsAction = actorEscrows.filter((escrow) => escrow.actions.some((action) => action.enabled));
-  const buyerEscrows = actorEscrows.filter((escrow) => escrow.viewerRole === "buyer");
-  const sellerEscrows = actorEscrows.filter((escrow) => escrow.viewerRole === "seller");
-  const arbitratorEscrows = actorEscrows.filter((escrow) => escrow.viewerRole === "arbitrator");
+  const needsActionIds = new Set(needsAction.map((escrow) => escrow.id));
+  const sellerEscrows = actorEscrows.filter((escrow) => escrow.viewerRole === "seller" && !needsActionIds.has(escrow.id));
+  const arbitratorEscrows = actorEscrows.filter((escrow) => escrow.viewerRole === "arbitrator" && !needsActionIds.has(escrow.id));
 
   const networkResources = {
     faucet:
@@ -248,9 +248,9 @@ export function ProductHome() {
       <section className="mb-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { title: "Needs your action", value: String(needsAction.length), body: "Escrows where your connected role can act right now." },
-          { title: "As buyer", value: String(buyerEscrows.length), body: "Escrows where your wallet is the buyer." },
-          { title: "As seller", value: String(sellerEscrows.length), body: "Escrows where your wallet is the seller." },
-          { title: "As arbitrator", value: String(arbitratorEscrows.length), body: "Disputes your assigned arbitrator wallet can resolve." },
+          { title: "Total matched", value: String(actorEscrows.length), body: "Live escrows where your connected wallet matches a participant role." },
+          { title: "As seller", value: String(sellerEscrows.length), body: "Seller-role escrows still being watched after the urgent ones." },
+          { title: "As arbitrator", value: String(arbitratorEscrows.length), body: "Disputes your assigned arbitrator wallet can still review." },
         ].map((item) => (
           <Card key={item.title}>
             <CardContent className="space-y-2 p-6">
@@ -334,18 +334,13 @@ export function ProductHome() {
               records={needsAction}
             />
             <EscrowGrid
-              title="As buyer"
-              body="Escrows funded by your connected buyer wallet."
-              records={buyerEscrows}
-            />
-            <EscrowGrid
-              title="As seller"
-              body="Escrows where your connected wallet is the seller."
+              title="Watching as seller"
+              body="Seller-role escrows that do not need your immediate action right now."
               records={sellerEscrows}
             />
             <EscrowGrid
-              title="As arbitrator"
-              body="Disputes your connected assigned-arbitrator wallet can help resolve."
+              title="Watching as arbitrator"
+              body="Disputes assigned to your arbitrator wallet that are not yet actionable in-product."
               records={arbitratorEscrows}
             />
           </div>
