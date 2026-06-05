@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { decodeEscrowData } from "@ckb-escrow/sdk";
 import {
-  AlertTriangle,
-  ArrowRight,
   CalendarClock,
   CircleHelp,
   ExternalLink,
@@ -16,10 +15,9 @@ import {
 } from "lucide-react";
 
 import { formatEscrowError } from "../error-format";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "../components/ui";
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui";
 import { createExplorerTxUrl } from "../studio";
 import { ProductActionView, ProductEscrowRecord, makeLiveEscrowId, toLiveProductEscrow } from "./contract";
-import { type StoredParticipantScript } from "./registry";
 import { createEscrowInput } from "./utils";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
@@ -27,69 +25,8 @@ function ActionBadge({ source }: { source: ProductEscrowRecord["source"] }) {
   return <Badge variant={source === "live" ? "success" : "outline"}>Live escrow</Badge>;
 }
 
-function ParticipantScriptEditor({
-  title,
-  lockHash,
-  storedScript,
-  onSave,
-}: {
-  title: string;
-  lockHash: string;
-  storedScript: StoredParticipantScript | undefined;
-  onSave: (lockHash: string, script: StoredParticipantScript) => void;
-}) {
-  const [codeHash, setCodeHash] = useState(storedScript?.codeHash ?? "");
-  const [args, setArgs] = useState(storedScript?.args ?? "0x");
-  const [hashType, setHashType] = useState<StoredParticipantScript["hashType"]>(storedScript?.hashType ?? "type");
-
-  return (
-    <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="font-medium text-foreground">{title}</p>
-          <p className="break-all text-xs text-muted-foreground">{lockHash}</p>
-        </div>
-        <Badge variant={storedScript ? "success" : "outline"}>{storedScript ? "Script saved" : "Script missing"}</Badge>
-      </div>
-
-      <div className="grid gap-3">
-        <div className="space-y-2">
-          <Label>Code hash</Label>
-          <Input value={codeHash} onChange={(event) => setCodeHash(event.target.value)} placeholder="0x..." />
-        </div>
-        <div className="space-y-2">
-          <Label>Hash type</Label>
-          <select
-            value={hashType}
-            onChange={(event) => setHashType(event.target.value as StoredParticipantScript["hashType"])}
-            className="flex h-11 w-full rounded-2xl border border-border bg-white px-4 text-sm text-foreground outline-none ring-0 transition focus:border-primary/40"
-          >
-            <option value="type">type</option>
-            <option value="data">data</option>
-            <option value="data1">data1</option>
-            <option value="data2">data2</option>
-          </select>
-        </div>
-        <div className="space-y-2">
-          <Label>Args</Label>
-          <Input value={args} onChange={(event) => setArgs(event.target.value)} placeholder="0x..." />
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => onSave(lockHash, { codeHash, hashType, args, label: title })}
-          disabled={!codeHash || !args}
-        >
-          Save {title} script
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function canExecuteInProduct(
   action: ProductActionView,
-  record: ProductEscrowRecord,
-  participantScripts: Record<string, StoredParticipantScript>,
   hasService: boolean,
   isLive: boolean,
 ): boolean {
@@ -102,14 +39,25 @@ function canExecuteInProduct(
     case "Dispute":
     case "Cancel":
       return true;
-    case "Complete":
-    case "ResolveToSeller":
-      return Boolean(participantScripts[record.sellerLockHash]);
-    case "ResolveToBuyer":
-      return Boolean(participantScripts[record.buyerLockHash]);
     default:
       return false;
   }
+}
+
+function formatTimelineDateTime(value: bigint | number | string | null | undefined): string | null {
+  if (value == null) {
+    return null;
+  }
+
+  const date = new Date(Number(value));
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
@@ -125,13 +73,12 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     escrowFetchError,
     activeLockHash,
     service,
-    participantScripts,
-    saveParticipantScript,
+    client,
   } = useProductWorkspaceContext();
   const [status, setStatus] = useState<string>("Idle");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [lastTxHash, setLastTxHash] = useState<string>("");
-  const [showScripts, setShowScripts] = useState(false);
+  const [timelineTimes, setTimelineTimes] = useState<Partial<Record<"Funded" | "Delivered" | "Disputed" | "Closed", string>>>({});
 
   useEffect(() => {
     if (!deploymentReady || isFetchingEscrows || hasFetchedEscrows) {
@@ -162,6 +109,68 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     return null;
   }, [activeLockHash, liveItem]);
 
+  useEffect(() => {
+    async function loadTimelineTimes() {
+      if (!liveItem) {
+        setTimelineTimes({});
+        return;
+      }
+
+      const nextTimelineTimes: Partial<Record<"Funded" | "Delivered" | "Disputed" | "Closed", string>> = {};
+      let cursorTxHash = liveItem.txHash;
+      let cursorIndex = liveItem.index;
+      const visited = new Set<string>();
+
+      while (cursorTxHash && !visited.has(`${cursorTxHash}:${cursorIndex}`)) {
+        visited.add(`${cursorTxHash}:${cursorIndex}`);
+        const response = await client.getTransactionWithHeader(cursorTxHash);
+        if (!response?.transaction) {
+          break;
+        }
+
+        const transaction = response.transaction as unknown as {
+          inputs?: Array<{ previousOutput?: { txHash?: string; index?: bigint | number | string } }>;
+          outputsData?: string[];
+        };
+        const outputIndex = Number(cursorIndex);
+        const outputData = transaction.outputsData?.[outputIndex];
+        if (!outputData) {
+          break;
+        }
+
+        try {
+          const decoded = decodeEscrowData(outputData as `0x${string}`);
+          const timelineLabel =
+            decoded.state === "Completed" || decoded.state === "Refunded" || decoded.state === "Cancelled" || decoded.state === "Resolved"
+              ? "Closed"
+              : decoded.state;
+          const timestampLabel = formatTimelineDateTime(response.header?.timestamp);
+          if (timestampLabel && !nextTimelineTimes[timelineLabel]) {
+            nextTimelineTimes[timelineLabel] = timestampLabel;
+          }
+
+          if (decoded.state === "Funded") {
+            break;
+          }
+        } catch {
+          break;
+        }
+
+        const previousOutput = transaction.inputs?.[0]?.previousOutput;
+        if (!previousOutput?.txHash || previousOutput.index == null) {
+          break;
+        }
+
+        cursorTxHash = previousOutput.txHash;
+        cursorIndex = String(previousOutput.index);
+      }
+
+      setTimelineTimes(nextTimelineTimes);
+    }
+
+    void loadTimelineTimes();
+  }, [client, liveItem]);
+
   async function runAction(action: ProductActionView["action"]) {
     if (!service || !liveItem || !record) {
       return;
@@ -183,30 +192,10 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
         case "Cancel":
           txHash = await service.sendCancel(cell);
           break;
-        case "Complete": {
-          const sellerLock = participantScripts[record.sellerLockHash];
-          if (!sellerLock) {
-            throw new Error("Seller lock script is missing. Save it below before releasing funds.");
-          }
-          txHash = await service.sendComplete({ escrowInput: cell, sellerLock });
-          break;
-        }
-        case "ResolveToBuyer": {
-          const buyerLock = participantScripts[record.buyerLockHash];
-          if (!buyerLock) {
-            throw new Error("Buyer lock script is missing. Save it below before resolving to the buyer.");
-          }
-          txHash = await service.sendResolveToBuyer({ escrowInput: cell, recipientLock: buyerLock });
-          break;
-        }
-        case "ResolveToSeller": {
-          const sellerLock = participantScripts[record.sellerLockHash];
-          if (!sellerLock) {
-            throw new Error("Seller lock script is missing. Save it below before resolving to the seller.");
-          }
-          txHash = await service.sendResolveToSeller({ escrowInput: cell, recipientLock: sellerLock });
-          break;
-        }
+        case "Complete":
+        case "ResolveToBuyer":
+        case "ResolveToSeller":
+          throw new Error("This action is not available in the current product flow yet.");
         default:
           throw new Error(`${action} still requires settlement support this week.`);
       }
@@ -385,7 +374,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="self-start">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-primary" />Connected signer</CardTitle>
             <CardDescription>Use the navbar wallet control to switch signer or network.</CardDescription>
@@ -407,21 +396,33 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle>Timeline</CardTitle>
             <CardDescription>State progression stays aligned with the escrow state machine.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {record.timeline.map((step) => (
-              <div key={step.label} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                <div className="mb-2 flex items-center gap-2">
-                  <Badge variant={step.status === "done" ? "success" : step.status === "current" ? "secondary" : "outline"}>{step.status}</Badge>
-                  <strong>{step.label}</strong>
+          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {record.timeline.map((step) => {
+              const stepTimestamp = timelineTimes[step.label as keyof typeof timelineTimes] ?? null;
+              return (
+                <div key={step.label} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Badge variant={step.status === "done" ? "success" : step.status === "current" ? "secondary" : "outline"}>{step.status}</Badge>
+                    <strong>{step.label}</strong>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{step.note}</p>
+                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                    {stepTimestamp
+                      ? step.status === "current"
+                        ? `Updated ${stepTimestamp}`
+                        : `Recorded ${stepTimestamp}`
+                      : step.status === "pending"
+                        ? "Time appears after this step is confirmed."
+                        : "Earlier in escrow history."}
+                  </p>
                 </div>
-                <p className="text-sm text-muted-foreground">{step.note}</p>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
 
@@ -441,8 +442,6 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
               record.actions.map((action) => {
                 const inProduct = canExecuteInProduct(
                   action,
-                  record,
-                  participantScripts,
                   Boolean(service),
                   record.source === "live",
                 );
@@ -455,7 +454,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                         <p className="mt-1 text-sm leading-6 text-muted-foreground">{action.description}</p>
                       </div>
                       <Badge variant={inProduct ? "success" : action.mode === "direct" ? "secondary" : "outline"}>
-                        {inProduct ? "Ready in product" : action.mode === "direct" ? "Needs signer context" : "Settlement support needed"}
+                        {inProduct ? "Ready in product" : action.mode === "direct" ? "Needs signer context" : "Not available yet"}
                       </Badge>
                     </div>
                     <div className="flex flex-wrap gap-3">
@@ -468,7 +467,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                       {!inProduct ? (
                         <p className="self-center text-xs leading-5 text-muted-foreground">
                           {action.mode === "studio"
-                            ? "This action still needs recipient script or settlement context before we can run it directly here."
+                            ? "This action is not available in the current product flow yet."
                             : "Reconnect the correct participant wallet to enable this action in-product."}
                         </p>
                       ) : null}
@@ -478,13 +477,6 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
               })
             )}
 
-            <div className="rounded-[1.25rem] border border-dashed border-primary/25 bg-primary/5 p-4 text-sm leading-6 text-muted-foreground">
-              <div className="mb-2 flex items-center gap-2 text-primary"><AlertTriangle className="h-4 w-4" /><strong>Why lock scripts matter</strong></div>
-              <p>
-                The contract stores participant <strong className="text-foreground">lock hashes</strong> on chain. Settlement actions like release, refund, and dispute resolution still need the recipient's full lock script off chain, so the product keeps a local registry of those scripts instead of guessing.
-              </p>
-            </div>
-
             <div className="rounded-[1.25rem] border border-border bg-secondary/60 p-4 text-sm text-muted-foreground">
               <p className="font-medium text-foreground">Status</p>
               <p className="mt-2">{status}</p>
@@ -493,42 +485,6 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           </CardContent>
         </Card>
 
-        <Card className="xl:col-span-2">
-          <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle>Participant lock scripts</CardTitle>
-              <CardDescription>
-                Save the full buyer, seller, or assigned arbitrator lock script here so settlement actions can be built directly from the product surface.
-              </CardDescription>
-            </div>
-            <Button variant="outline" onClick={() => setShowScripts((value) => !value)}>
-              {showScripts ? "Hide script editor" : "Show script editor"}
-              <ArrowRight className={`h-4 w-4 transition-transform ${showScripts ? "rotate-90" : ""}`} />
-            </Button>
-          </CardHeader>
-          {showScripts ? (
-            <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <ParticipantScriptEditor
-                title={record.buyerLabel}
-                lockHash={record.buyerLockHash}
-                storedScript={participantScripts[record.buyerLockHash]}
-                onSave={saveParticipantScript}
-              />
-              <ParticipantScriptEditor
-                title={record.sellerLabel}
-                lockHash={record.sellerLockHash}
-                storedScript={participantScripts[record.sellerLockHash]}
-                onSave={saveParticipantScript}
-              />
-              <ParticipantScriptEditor
-                title={record.arbitratorLabel}
-                lockHash={record.arbitratorLockHash}
-                storedScript={participantScripts[record.arbitratorLockHash]}
-                onSave={saveParticipantScript}
-              />
-            </CardContent>
-          ) : null}
-        </Card>
       </div>
     </div>
   );

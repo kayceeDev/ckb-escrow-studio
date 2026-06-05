@@ -147,7 +147,7 @@ export function getActionViews(
             action: "Refund",
             label: "Refund after deadline",
             description: deadlineReached
-              ? "Refund is unlocked, but it still needs a reference header timestamp in the transaction."
+              ? "Refund is eligible now, but it is not available in the current product flow yet."
               : "Refund only becomes valid once the escrow deadline has passed.",
             enabled: deadlineReached,
             mode: "studio",
@@ -172,8 +172,7 @@ export function getActionViews(
           {
             action: "Complete",
             label: "Release funds",
-            description:
-              "Completing payout needs the seller's full recipient lock script, not just the on-chain lock hash.",
+            description: "Release is part of the escrow lifecycle, but it is not available in the current product flow yet.",
             enabled: true,
             mode: "studio",
           },
@@ -204,16 +203,14 @@ export function getActionViews(
           {
             action: "ResolveToBuyer",
             label: "Resolve to buyer",
-            description:
-              "Resolution needs the recipient's full lock script so the payout can be built correctly.",
+            description: "Resolution is part of the dispute flow, but it is not available in the current product flow yet.",
             enabled: true,
             mode: "studio",
           },
           {
             action: "ResolveToSeller",
             label: "Resolve to seller",
-            description:
-              "Resolution needs the recipient's full lock script so the payout can be built correctly.",
+            description: "Resolution is part of the dispute flow, but it is not available in the current product flow yet.",
             enabled: true,
             mode: "studio",
           },
