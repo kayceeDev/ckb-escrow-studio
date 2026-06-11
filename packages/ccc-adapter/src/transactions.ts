@@ -8,7 +8,6 @@ import {
 
 import { applyEscrowDeployment, getEscrowTypeScript } from "./deployment.js";
 import type {
-  EscrowActionTxParams,
   EscrowCreateTxParams,
   EscrowDeployment,
   EscrowSettlementTxParams,
@@ -177,7 +176,10 @@ export function buildSettlementTransaction(
   tx.addOutput(
     {
       lock: params.recipientLock,
-      capacity: toCapacity(params.recipientCapacity, plan.minimumPayoutShannons),
+      capacity: toCapacity(
+        params.recipientCapacity,
+        ccc.Cell.from(params.escrowInput).cellOutput.capacity,
+      ),
     },
     "0x",
   );

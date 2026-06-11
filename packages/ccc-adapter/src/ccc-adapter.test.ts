@@ -87,13 +87,20 @@ describe("ccc adapter", () => {
       description: "website redesign",
     });
 
-    expect(tx.outputs[0].capacity).toBeGreaterThan(1_000n);
+    const firstOutput = tx.outputs[0]!;
+    const firstOutputData = tx.outputsData[0]!;
+
+    expect(firstOutput.capacity).toBeGreaterThan(1_000n);
     const occupied = ccc.CellOutput.from(
-      { ...tx.outputs[0], capacity: 0n },
-      tx.outputsData[0],
+      {
+        capacity: 0n,
+        lock: firstOutput.lock,
+        ...(firstOutput.type ? { type: firstOutput.type } : {}),
+      },
+      firstOutputData,
     ).capacity;
 
-    expect(tx.outputs[0].capacity).toBe(1_000n + occupied);
+    expect(firstOutput.capacity).toBe(1_000n + occupied);
   });
 
   it("builds a dispute transaction with a dispute witness", () => {
@@ -125,5 +132,15 @@ describe("ccc adapter", () => {
     expect(tx.inputs).toHaveLength(1);
     expect(tx.outputs).toHaveLength(1);
     expect(tx.headerDeps).toHaveLength(1);
+  });
+
+  it("defaults settlement payout capacity to the full escrow cell capacity", () => {
+    const tx = buildSettlementTransaction(deployment, "Cancel", {
+      escrowInput: escrowCell("00"),
+      recipientLock: buyerLock,
+    });
+
+    expect(tx.outputs).toHaveLength(1);
+    expect(tx.outputs[0]?.capacity).toBe(2_000n);
   });
 });
