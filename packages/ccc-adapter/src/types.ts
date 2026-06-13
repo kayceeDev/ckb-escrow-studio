@@ -36,3 +36,17 @@ export interface EscrowSettlementTxParams extends EscrowActionTxParams {
   recipientLock: ccc.ScriptLike;
   recipientCapacity?: bigint | number | string;
 }
+
+export type EscrowSettlementAction =
+  | "Cancel"
+  | "Refund"
+  | "Complete"
+  | "ResolveToBuyer"
+  | "ResolveToSeller";
+
+export interface EscrowSettlementFinalizationContext {
+  escrowInput: ccc.CellLike;
+  recipientLock: ccc.ScriptLike;
+  action: EscrowSettlementAction;
+  recipientOutputIndex?: number;
+}

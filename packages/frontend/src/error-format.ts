@@ -23,6 +23,13 @@ export function formatEscrowError(error: unknown): FormattedEscrowError {
     return hint ? { detail, hint } : { detail };
   }
 
+  if (detail.includes("PoolRejectedTransactionByMinFeeRate")) {
+    return {
+      detail,
+      hint: "The transaction fee is below the current CKB minimum fee rate. Rebuild the transaction and let the wallet add a fee input before submitting.",
+    };
+  }
+
   if (detail.toLowerCase().includes("signer")) {
     return {
       detail,

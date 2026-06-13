@@ -59,6 +59,7 @@ export const initialActionForm: ActionFormState = {
   escrowIndex: "0",
   escrowCapacity: "200000000",
   escrowLockCodeHash: "",
+  escrowLockHashType: "type",
   escrowLockArgs: "0x",
   escrowDataHex: "0x",
   recipientCodeHash: "",
@@ -144,10 +145,14 @@ export function makeCellDep(form: DeploymentFormState): ccc.CellDepLike {
   };
 }
 
-export function makeLock(codeHash: string, args: string): ccc.ScriptLike {
+export function makeLock(
+  codeHash: string,
+  args: string,
+  hashType: DeploymentFormState["escrowLockHashType"] = "type",
+): ccc.ScriptLike {
   return {
     codeHash: codeHash || "0x",
-    hashType: "type",
+    hashType,
     args: args || "0x",
   };
 }
@@ -180,7 +185,7 @@ export function makeEscrowCell(
     },
     cellOutput: {
       capacity: BigInt(action.escrowCapacity || "0"),
-      lock: makeLock(action.escrowLockCodeHash, action.escrowLockArgs),
+      lock: makeLock(action.escrowLockCodeHash, action.escrowLockArgs, action.escrowLockHashType),
       type: makeTypeScript(deployment),
     },
     outputData: action.escrowDataHex || "0x",

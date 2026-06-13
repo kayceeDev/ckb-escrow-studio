@@ -21,6 +21,7 @@ export function createEscrowInput(
       escrowIndex: escrow.index,
       escrowCapacity: escrow.capacity,
       escrowLockCodeHash: escrow.lock.codeHash.toString(),
+      escrowLockHashType: (ccc.Script.from(escrow.lock).hashType as DeploymentFormState["escrowLockHashType"]),
       escrowLockArgs: escrow.lock.args.toString(),
       escrowDataHex: escrow.decoded.dataHex,
       recipientCodeHash: "",

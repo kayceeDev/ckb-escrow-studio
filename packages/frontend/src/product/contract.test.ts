@@ -38,14 +38,27 @@ describe("product contract helpers", () => {
     expect(getActionViews(disputed, "buyer")).toHaveLength(0);
   });
 
+  it("turns delivered buyer release into a direct product action", () => {
+    const deliveredActions = getActionViews({ ...escrow, state: "Delivered" as const }, "buyer");
+    expect(deliveredActions.map((action) => action.action)).toEqual(["Complete", "Dispute"]);
+    expect(deliveredActions[0]).toMatchObject({
+      action: "Complete",
+      mode: "direct",
+      enabled: true,
+    });
+  });
+
   it("adds buyer-first guidance for funded and delivered escrows", () => {
     const fundedGuidance = guidanceForEscrow(escrow, "buyer");
-    expect(fundedGuidance.summary).toContain("Refund window");
-    expect(fundedGuidance.nextStep).toContain("cancel");
+    expect(fundedGuidance.summary).toContain("Refund is available");
+    expect(fundedGuidance.nextStep).toContain("Claim your refund");
+    expect(fundedGuidance.nextStep).toContain("automatically");
 
     const deliveredGuidance = guidanceForEscrow({ ...escrow, state: "Delivered" as const }, "buyer");
     expect(deliveredGuidance.summary).toContain("Buyer decision");
-    expect(deliveredGuidance.supportLabel).toContain("Release");
+    expect(deliveredGuidance.nextStep).toContain("Release funds");
+    expect(deliveredGuidance.detail).toContain("explicitly releases funds");
+    expect(deliveredGuidance.supportLabel).toContain("seller payout script");
   });
 });
 

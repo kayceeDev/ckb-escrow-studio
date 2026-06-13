@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import * as ccc from "@ckb-ccc/ccc";
+import { describe, expect, it } from "vitest";
 
 import { EscrowService } from "./index.js";
 
@@ -66,10 +66,37 @@ function createMockSigner() {
     async getRecommendedAddressObj() {
       return address;
     },
+    async *findCells() {
+      yield ccc.Cell.from({
+        outPoint: {
+          txHash: "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          index: 0,
+        },
+        cellOutput: {
+          capacity: 500n,
+          lock: buyerLock,
+        },
+        outputData: "0x",
+      });
+    },
     async sendTransaction(_tx: ccc.TransactionLike) {
       return "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
     },
   } as unknown as ccc.Signer;
+}
+
+function signerInput(index: number): ccc.CellInputLike {
+  return {
+    previousOutput: {
+      txHash: `0x${String(index).padStart(64, "0")}`,
+      index: 0,
+    },
+    cellOutput: {
+      capacity: 500n,
+      lock: buyerLock,
+    },
+    outputData: "0x",
+  };
 }
 
 describe("EscrowService", () => {
@@ -100,15 +127,63 @@ describe("EscrowService", () => {
 
     const tx = await service.buildRefund({
       escrowInput: escrowCell("00"),
+      signerInput: signerInput(1),
       referenceTimestampMs: 1_700_000_000_001n,
       headerDeps: [
         "0x5555555555555555555555555555555555555555555555555555555555555555",
       ],
     });
 
+    expect(tx.inputs).toHaveLength(2);
     expect(tx.outputs).toHaveLength(1);
     expect(tx.headerDeps).toHaveLength(1);
     expect(tx.outputs[0]?.lock.eq(buyerLock)).toBe(true);
+  });
+
+  it("builds release and refund transactions with signer inputs for authorization", async () => {
+    const service = new EscrowService({
+      deployment,
+      signer: createMockSigner(),
+    });
+
+    const refundTx = await service.buildRefund({
+      escrowInput: escrowCell("00"),
+      signerInput: signerInput(3),
+      referenceTimestampMs: 1_700_000_000_001n,
+      headerDeps: [
+        "0x5555555555555555555555555555555555555555555555555555555555555555",
+      ],
+    });
+    const completeTx = service.buildComplete({
+      escrowInput: escrowCell("01"),
+      signerInput: signerInput(4),
+      sellerLock,
+    });
+
+    expect(refundTx.inputs).toHaveLength(2);
+    expect(completeTx.inputs).toHaveLength(2);
+  });
+
+  it("auto-adds signer authorization inputs for direct release and refund sends", async () => {
+    const service = new EscrowService({
+      deployment,
+      signer: createMockSigner(),
+    });
+
+    const refundTx = await service.buildRefund({
+      escrowInput: escrowCell("00"),
+      referenceTimestampMs: 1_700_000_000_001n,
+      headerDeps: [
+        "0x5555555555555555555555555555555555555555555555555555555555555555",
+      ],
+    });
+    const completeTx = await service.buildCompleteWithSignerInput({
+      escrowInput: escrowCell("01"),
+      sellerLock,
+    });
+
+    expect(refundTx.inputs).toHaveLength(2);
+    expect(completeTx.inputs).toHaveLength(2);
   });
 
   it("builds seller resolution transactions with explicit recipient lock", () => {
@@ -123,6 +198,22 @@ describe("EscrowService", () => {
     });
 
     expect(tx.outputs).toHaveLength(1);
+    expect(tx.outputs[0]?.lock.eq(sellerLock)).toBe(true);
+  });
+
+  it("builds complete transactions with forwarded signer input", () => {
+    const service = new EscrowService({
+      deployment,
+      signer: createMockSigner(),
+    });
+
+    const tx = service.buildComplete({
+      escrowInput: escrowCell("01"),
+      signerInput: signerInput(2),
+      sellerLock,
+    });
+
+    expect(tx.inputs).toHaveLength(2);
     expect(tx.outputs[0]?.lock.eq(sellerLock)).toBe(true);
   });
 });

@@ -70,3 +70,12 @@ export function storedScriptFromScriptLike(
     ...(label ? { label } : {}),
   };
 }
+
+export function scriptLikeFromStored(script: StoredParticipantScript): ccc.ScriptLike {
+  const normalized = normalizeStoredScript(script);
+  return {
+    codeHash: normalized.codeHash,
+    hashType: normalized.hashType,
+    args: normalized.args,
+  };
+}

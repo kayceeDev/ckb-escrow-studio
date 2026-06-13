@@ -31,6 +31,7 @@ export interface ActionFormState {
   escrowIndex: string;
   escrowCapacity: string;
   escrowLockCodeHash: string;
+  escrowLockHashType: "type" | "data" | "data1" | "data2";
   escrowLockArgs: string;
   escrowDataHex: string;
   recipientCodeHash: string;

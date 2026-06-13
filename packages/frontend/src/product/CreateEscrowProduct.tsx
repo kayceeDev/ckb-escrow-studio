@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import * as ccc from "@ckb-ccc/ccc";
 import {
@@ -60,6 +61,7 @@ function useAssignedArbitratorLabel(arbitrator: ProductArbitratorConfig | null):
 }
 
 export function CreateEscrowProduct() {
+  const router = useRouter();
   const {
     network,
     setNetwork,
@@ -82,6 +84,7 @@ export function CreateEscrowProduct() {
   const [lastTxHash, setLastTxHash] = useState("");
   const [lastEscrowId, setLastEscrowId] = useState("");
   const [assignedArbitrator, setAssignedArbitrator] = useState<ProductArbitratorConfig | null>(null);
+  const [sellerMatchesBuyer, setSellerMatchesBuyer] = useState(false);
 
   const arbitratorPool = useMemo(() => resolveArbitratorPool(network), [network]);
   const hasAvailableArbitratorPool = useMemo(
@@ -94,11 +97,23 @@ export function CreateEscrowProduct() {
     async function assignArbitrator() {
       if (!walletState.activeSigner || !sellerAddress.trim() || !hasAvailableArbitratorPool) {
         setAssignedArbitrator(null);
+        setSellerMatchesBuyer(false);
         return;
       }
 
       try {
         const buyerAddress = await walletState.activeSigner.getRecommendedAddressObj();
+        const seller = await ccc.Address.fromString(sellerAddress, client);
+        const buyerLockHash = ccc.Script.from(buyerAddress.script).hash().toLowerCase();
+        const sellerLockHash = ccc.Script.from(seller.script).hash().toLowerCase();
+        const isSelfEscrow = buyerLockHash === sellerLockHash;
+
+        setSellerMatchesBuyer(isSelfEscrow);
+        if (isSelfEscrow) {
+          setAssignedArbitrator(null);
+          return;
+        }
+
         const selection = selectAssignedArbitrator({
           network,
           buyerLockHash: ccc.Script.from(buyerAddress.script).hash(),
@@ -109,11 +124,12 @@ export function CreateEscrowProduct() {
         setAssignedArbitrator(selection);
       } catch {
         setAssignedArbitrator(null);
+        setSellerMatchesBuyer(false);
       }
     }
 
     void assignArbitrator();
-  }, [arbitratorPool, hasAvailableArbitratorPool, network, referenceId, sellerAddress, walletState.activeSigner]);
+  }, [arbitratorPool, client, hasAvailableArbitratorPool, network, referenceId, sellerAddress, walletState.activeSigner]);
 
   const formReady = useMemo(
     () =>
@@ -123,9 +139,10 @@ export function CreateEscrowProduct() {
           amountCkb &&
           deadline &&
           description &&
-          assignedArbitrator,
+          assignedArbitrator &&
+          !sellerMatchesBuyer,
       ),
-    [amountCkb, assignedArbitrator, deadline, description, sellerAddress, walletState.activeSigner],
+    [amountCkb, assignedArbitrator, deadline, description, sellerAddress, sellerMatchesBuyer, walletState.activeSigner],
   );
 
   async function resolveScripts() {
@@ -140,6 +157,12 @@ export function CreateEscrowProduct() {
     const buyerAddress = await walletState.activeSigner.getRecommendedAddressObj();
     const seller = await ccc.Address.fromString(sellerAddress, client);
     const arbitrator = await ccc.Address.fromString(assignedArbitrator.address, client);
+    const buyerLockHash = ccc.Script.from(buyerAddress.script).hash().toLowerCase();
+    const sellerLockHash = ccc.Script.from(seller.script).hash().toLowerCase();
+
+    if (buyerLockHash === sellerLockHash) {
+      throw new Error("Buyer and seller must be different wallets.");
+    }
 
     return {
       buyerScript: buyerAddress.script,
@@ -200,13 +223,12 @@ export function CreateEscrowProduct() {
       await saveParticipantScripts();
       const refreshedEscrows = await refreshEscrows();
       const createdEscrow = refreshedEscrows.find((escrow) => escrow.txHash === txHash);
+      const nextEscrowId = createdEscrow ? createdEscrow.txHash : txHash;
       setLastTxHash(txHash);
-      setLastEscrowId(createdEscrow ? createdEscrow.txHash : txHash);
-      setStatus(
-        createdEscrow
-          ? `Create escrow submitted on ${network} with ${assignedArbitratorLabel}. The live escrow detail is now ready.`
-          : `Create escrow submitted on ${network} with ${assignedArbitratorLabel}. The dashboard can now refresh against live cells.`,
-      );
+      setLastEscrowId(nextEscrowId);
+      setStatus(`Create escrow submitted on ${network} with ${assignedArbitratorLabel}. Redirecting to your escrow list...`);
+      router.push(`/escrows?created=${encodeURIComponent(nextEscrowId)}`);
+      return;
     } catch (error) {
       const { detail, hint } = formatEscrowError(error);
       setStatus(hint ? `${detail} ${hint}` : detail);
@@ -302,6 +324,12 @@ export function CreateEscrowProduct() {
               <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the service, milestone, or goods being escrowed." />
             </div>
 
+            {sellerMatchesBuyer ? (
+              <div className="rounded-[1.25rem] border border-destructive/20 bg-destructive/5 p-4 text-sm leading-6 text-destructive">
+                Buyer and seller must be different wallets. Switch the seller address before creating this escrow.
+              </div>
+            ) : null}
+
             {!hasAvailableArbitratorPool ? (
               <div className="rounded-[1.25rem] border border-destructive/20 bg-destructive/5 p-4 text-sm leading-6 text-destructive">
                 Escrow creation is unavailable on this network because dispute protection is not configured yet.
@@ -359,13 +387,13 @@ export function CreateEscrowProduct() {
                   </Button>
                   {lastEscrowId ? (
                     <Button asChild variant="outline">
-                      <Link href={`/escrows/${encodeURIComponent(lastEscrowId)}`}>
-                        Open escrow detail
+                      <Link href={`/escrows?created=${encodeURIComponent(lastEscrowId)}`}>
+                        View escrow list
                       </Link>
                     </Button>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      Waiting for live escrow discovery before opening the detail page.
+                      Waiting for live escrow discovery before opening the escrow list.
                     </p>
                   )}
                 </div>

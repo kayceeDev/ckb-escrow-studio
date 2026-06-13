@@ -12,6 +12,7 @@ export interface EscrowServiceCreateParams
 
 export interface EscrowServiceActionBase {
   escrowInput: ccc.CellLike;
+  signerInput?: ccc.CellInputLike;
   feeRate?: ccc.NumLike;
 }
 

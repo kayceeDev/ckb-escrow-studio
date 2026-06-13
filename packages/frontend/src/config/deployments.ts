@@ -23,12 +23,12 @@ export interface ProductArbitratorSelectionInput {
 
 const STATIC_DEPLOYMENTS: Record<CkbNetwork, DeploymentFormState> = {
   testnet: {
-    codeHash: "0xcd5061b3db81563eed169d78258f1214394a77c4e267ede8388efbd647c1b15a",
+    codeHash: "0x9a477688b4767d9cdbd0f526c25a9265171b63cdc72487452cd22fa92a255a8f",
     hashType: "data2",
     args: "0x",
-    depTxHash: "0xe5fc121d59cc0379230e4c8e68ad7ee2d10c2ab42415c7303121ed43d9516a97",
+    depTxHash: "0x6a1bdcfd076a04bceb14cad8069952a04f17e57091d1ac27b32304127c3ffe28",
     depIndex: "0",
-    escrowLockCodeHash: "0xcd5061b3db81563eed169d78258f1214394a77c4e267ede8388efbd647c1b15a",
+    escrowLockCodeHash: "0x9a477688b4767d9cdbd0f526c25a9265171b63cdc72487452cd22fa92a255a8f",
     escrowLockHashType: "data2",
     escrowLockArgs: "0x",
   },

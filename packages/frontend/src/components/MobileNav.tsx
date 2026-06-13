@@ -76,6 +76,7 @@ export function MobileNav({ items }: MobileNavProps) {
               <span className="text-sm font-semibold tracking-[0.01em]">{item.label}</span>
               <span className={cn("text-xs", active ? "text-primary-foreground/80" : "text-muted-foreground")}>
                 {item.href === "/" && "Live dashboard and role-based escrows"}
+                {item.href === "/escrows" && "Browse all live escrow cards in one place"}
                 {item.href === "/escrows/create" && "Start a new protected payment flow"}
               </span>
             </div>

@@ -139,18 +139,20 @@ export function getActionViews(
           {
             action: "Cancel",
             label: "Cancel escrow",
-            description: "Buyer can close a funded escrow before the seller advances it.",
-            enabled: true,
+            description: deadlineReached
+              ? "Cancel is replaced by refund once the escrow deadline has passed."
+              : "Buyer can close a funded escrow before the seller advances it.",
+            enabled: !deadlineReached,
             mode: "direct",
           },
           {
             action: "Refund",
-            label: "Refund after deadline",
+            label: deadlineReached ? "Claim refund now" : "Refund after deadline",
             description: deadlineReached
-              ? "Refund is eligible now, but it is not available in the current product flow yet."
-              : "Refund only becomes valid once the escrow deadline has passed.",
+              ? "The deadline has passed, so refund is ready now with the required proof prepared automatically."
+              : "Refund becomes available once the escrow deadline has passed.",
             enabled: deadlineReached,
-            mode: "studio",
+            mode: "direct",
           },
         ];
       }
@@ -172,9 +174,9 @@ export function getActionViews(
           {
             action: "Complete",
             label: "Release funds",
-            description: "Release is part of the escrow lifecycle, but it is not available in the current product flow yet.",
+            description: "Buyer releases escrow funds to the seller and closes the escrow.",
             enabled: true,
-            mode: "studio",
+            mode: "direct",
           },
           {
             action: "Dispute",
@@ -233,13 +235,12 @@ export function guidanceForEscrow(
     case "Funded":
       if (viewerRole === "buyer") {
         return {
-          summary: deadlineReached ? "Refund window is now available." : "Waiting for the seller to deliver.",
+          summary: deadlineReached ? "Refund is available now." : "Waiting for the seller to deliver.",
           nextStep: deadlineReached
-            ? "You can cancel immediately or use refund once the settlement header context is ready."
+            ? "Claim your refund now that the deadline has passed. The product will prepare the required timestamp proof automatically."
             : "Wait for the seller to mark the escrow as delivered, or cancel before work advances.",
           detail:
             "Buyer funds are already locked on chain in the escrow cell. The seller must mark delivery before release or dispute actions appear.",
-          ...(deadlineReached ? { supportLabel: "Refund needs settlement support this week." } : {}),
         };
       }
       if (viewerRole === "seller") {
@@ -270,8 +271,8 @@ export function guidanceForEscrow(
           summary: "Buyer decision required.",
           nextStep: "Release funds if delivery is acceptable, or open a dispute if something is wrong.",
           detail:
-            "Release is available once the product knows the seller's full recipient lock script. Dispute is safe to open directly here.",
-          supportLabel: "Release may need settlement support if the seller script is still missing.",
+            "Delivered escrows stay open until the buyer explicitly releases funds to the seller or escalates to a dispute.",
+          supportLabel: "Release needs the seller payout script saved on this device.",
         };
       }
       if (viewerRole === "seller") {

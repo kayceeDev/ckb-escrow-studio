@@ -10,6 +10,8 @@ import { applyEscrowDeployment, getEscrowTypeScript } from "./deployment.js";
 import type {
   EscrowCreateTxParams,
   EscrowDeployment,
+  EscrowSettlementAction,
+  EscrowSettlementFinalizationContext,
   EscrowSettlementTxParams,
   EscrowTransitionTxParams,
 } from "./types.js";
@@ -34,8 +36,8 @@ function createEmptyWitness(): ccc.Hex {
   return ccc.hexFrom(ccc.WitnessArgs.from({}).toBytes());
 }
 
-function fillWitnessesForInputCount(tx: ccc.Transaction, firstWitness: ccc.Hex): void {
-  tx.witnesses = [firstWitness];
+function setEscrowActionWitness(tx: ccc.Transaction, witness: ccc.Hex): void {
+  tx.witnesses[0] = witness;
   while (tx.witnesses.length < tx.inputs.length) {
     tx.witnesses.push(createEmptyWitness());
   }
@@ -59,6 +61,35 @@ function addHeaderDeps(tx: ccc.Transaction, headerDeps?: ccc.HexLike[]): void {
 
   for (const headerDep of headerDeps) {
     tx.headerDeps.push(ccc.hexFrom(headerDep));
+  }
+}
+
+function scriptHash(scriptLike: ccc.ScriptLike): string {
+  return ccc.Script.from(scriptLike).hash().toLowerCase();
+}
+
+function settlementRecipientHash(
+  action: EscrowSettlementAction,
+  escrow: ReturnType<typeof decodeEscrowCell>,
+): string {
+  if (action === "Complete" || action === "ResolveToSeller") {
+    return escrow.sellerLockHash.toLowerCase();
+  }
+  return escrow.buyerLockHash.toLowerCase();
+}
+
+function ensureRecipientMatchesSettlement(
+  action: EscrowSettlementAction,
+  escrow: ReturnType<typeof decodeEscrowCell>,
+  recipientLock: ccc.ScriptLike,
+): void {
+  const expected = settlementRecipientHash(action, escrow);
+  const actual = scriptHash(recipientLock);
+
+  if (actual !== expected) {
+    throw new Error(
+      `Settlement recipient lock does not match ${action} contract payout target.`,
+    );
   }
 }
 
@@ -120,7 +151,7 @@ export function buildDeliverTransaction(
     },
     plan.outputDataHex,
   );
-  fillWitnessesForInputCount(tx, createWitness(plan.witness.payloadHex));
+  setEscrowActionWitness(tx, createWitness(plan.witness.payloadHex));
 
   return tx;
 }
@@ -147,17 +178,18 @@ export function buildDisputeTransaction(
     },
     plan.outputDataHex,
   );
-  fillWitnessesForInputCount(tx, createWitness(plan.witness.payloadHex));
+  setEscrowActionWitness(tx, createWitness(plan.witness.payloadHex));
 
   return tx;
 }
 
 export function buildSettlementTransaction(
   deployment: EscrowDeployment,
-  action: "Cancel" | "Refund" | "Complete" | "ResolveToBuyer" | "ResolveToSeller",
+  action: EscrowSettlementAction,
   params: EscrowSettlementTxParams,
 ): ccc.Transaction {
   const escrow = decodeEscrowCell(params.escrowInput);
+  ensureRecipientMatchesSettlement(action, escrow, params.recipientLock);
   const plan = planEscrowAction(
     escrow,
     action,
@@ -184,7 +216,7 @@ export function buildSettlementTransaction(
     "0x",
   );
   addHeaderDeps(tx, params.headerDeps);
-  fillWitnessesForInputCount(tx, createWitness(plan.witness.payloadHex));
+  setEscrowActionWitness(tx, createWitness(plan.witness.payloadHex));
 
   return tx;
 }
@@ -196,6 +228,33 @@ export async function completeFeeBySigner(
     feeRate?: ccc.NumLike;
   },
 ): Promise<ccc.Transaction> {
+  await tx.completeFeeBy(signer, options?.feeRate);
+  return tx;
+}
+
+export async function completeSettlementFeeBySigner(
+  tx: ccc.Transaction,
+  signer: ccc.Signer,
+  context: EscrowSettlementFinalizationContext,
+  options?: {
+    feeRate?: ccc.NumLike;
+  },
+): Promise<ccc.Transaction> {
+  const escrow = decodeEscrowCell(context.escrowInput);
+  ensureRecipientMatchesSettlement(context.action, escrow, context.recipientLock);
+
+  const signerLock = (await signer.getRecommendedAddressObj()).script;
+  const signerIsRecipient = scriptHash(signerLock) === scriptHash(context.recipientLock);
+
+  if (signerIsRecipient) {
+    await tx.completeFeeChangeToOutput(
+      signer,
+      context.recipientOutputIndex ?? 0,
+      options?.feeRate,
+    );
+    return tx;
+  }
+
   await tx.completeFeeBy(signer, options?.feeRate);
   return tx;
 }

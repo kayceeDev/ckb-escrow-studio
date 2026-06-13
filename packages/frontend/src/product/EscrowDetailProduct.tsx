@@ -18,6 +18,7 @@ import { formatEscrowError } from "../error-format";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui";
 import { createExplorerTxUrl } from "../studio";
 import { ProductActionView, ProductEscrowRecord, makeLiveEscrowId, toLiveProductEscrow } from "./contract";
+import { scriptLikeFromStored } from "./registry";
 import { createEscrowInput } from "./utils";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
@@ -29,6 +30,7 @@ function canExecuteInProduct(
   action: ProductActionView,
   hasService: boolean,
   isLive: boolean,
+  hasSellerScript: boolean,
 ): boolean {
   if (!isLive || !hasService || !action.enabled) {
     return false;
@@ -38,7 +40,10 @@ function canExecuteInProduct(
     case "Deliver":
     case "Dispute":
     case "Cancel":
+    case "Refund":
       return true;
+    case "Complete":
+      return hasSellerScript;
     default:
       return false;
   }
@@ -74,6 +79,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     activeLockHash,
     service,
     client,
+    participantScripts,
   } = useProductWorkspaceContext();
   const [status, setStatus] = useState<string>("Idle");
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -108,6 +114,11 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     }
     return null;
   }, [activeLockHash, liveItem]);
+  const sellerStoredScript = useMemo(
+    () => (record ? participantScripts[record.sellerLockHash] ?? null : null),
+    [participantScripts, record],
+  );
+  const hasSellerScript = sellerStoredScript != null;
 
   useEffect(() => {
     async function loadTimelineTimes() {
@@ -192,7 +203,24 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
         case "Cancel":
           txHash = await service.sendCancel(cell);
           break;
+        case "Refund": {
+          const referenceHeader = await client.getTipHeader();
+          txHash = await service.sendRefund({
+            escrowInput: cell,
+            referenceTimestampMs: BigInt(String(referenceHeader.timestamp)),
+            headerDeps: [referenceHeader.hash],
+          });
+          break;
+        }
         case "Complete":
+          if (!sellerStoredScript) {
+            throw new Error("Release funds is unavailable on this device because the seller payout script is missing.");
+          }
+          txHash = await service.sendComplete({
+            escrowInput: cell,
+            sellerLock: scriptLikeFromStored(sellerStoredScript),
+          });
+          break;
         case "ResolveToBuyer":
         case "ResolveToSeller":
           throw new Error("This action is not available in the current product flow yet.");
@@ -300,191 +328,225 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
         <ActionBadge source={record.source} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card className="xl:col-span-2">
-          <CardHeader className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="space-y-2">
-              <CardTitle className="text-3xl">{record.title}</CardTitle>
-              <CardDescription>{record.description}</CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button variant="outline" onClick={() => void refreshEscrows()} disabled={!deploymentReady || isFetchingEscrows}>
-                <RefreshCcw className="h-4 w-4" />
-                Refresh state
-              </Button>
-              {lastTxHash ? (
-                <Button asChild variant="outline">
-                  <Link href={createExplorerTxUrl(lastTxHash, network)} target="_blank" rel="noreferrer">
-                    View transaction
-                    <ExternalLink className="h-4 w-4" />
-                  </Link>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_360px]">
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="space-y-2">
+                <CardTitle className="text-3xl">{record.title}</CardTitle>
+                <CardDescription>{record.description}</CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button variant="outline" onClick={() => void refreshEscrows()} disabled={!deploymentReady || isFetchingEscrows}>
+                  <RefreshCcw className="h-4 w-4" />
+                  Refresh state
                 </Button>
-              ) : null}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                <div className="mb-2 flex items-center gap-2 text-primary"><Scale className="h-4 w-4" /><span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Amount</span></div>
-                <strong>{record.amountLabel}</strong>
-              </div>
-              <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                <div className="mb-2 flex items-center gap-2 text-primary"><CalendarClock className="h-4 w-4" /><span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Deadline</span></div>
-                <strong>{record.deadlineLabel}</strong>
-              </div>
-              <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                <div className="mb-2 flex items-center gap-2 text-primary"><Store className="h-4 w-4" /><span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Seller</span></div>
-                <strong>{record.sellerLabel}</strong>
-              </div>
-            </div>
-
-            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4 text-sm text-muted-foreground">
-              <p>
-                <strong className="text-foreground">Assigned arbitrator:</strong> {record.arbitratorLabel}
-              </p>
-              <p className="mt-2 leading-6">
-                The platform assigned this arbitrator when the escrow was created, and that lock hash is now fixed in the on-chain escrow data.
-              </p>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-[1.25rem] border border-primary/20 bg-primary/6 p-4 text-sm text-muted-foreground">
-                <div className="mb-2 flex items-center gap-2 text-primary"><CircleHelp className="h-4 w-4" /><strong>What happens next</strong></div>
-                <p className="font-medium text-foreground">{record.guidance.summary}</p>
-                <p className="mt-2 leading-6">{record.guidance.nextStep}</p>
-                <p className="mt-2 text-xs leading-5">{record.guidance.detail}</p>
-                {record.guidance.supportLabel ? (
-                  <p className="mt-3 rounded-xl border border-dashed border-border bg-white/70 px-3 py-2 text-xs leading-5">
-                    {record.guidance.supportLabel}
-                  </p>
+                {lastTxHash ? (
+                  <Button asChild variant="outline">
+                    <Link href={createExplorerTxUrl(lastTxHash, network)} target="_blank" rel="noreferrer">
+                      View transaction
+                      <ExternalLink className="h-4 w-4" />
+                    </Link>
+                  </Button>
                 ) : null}
               </div>
-              <div className="rounded-[1.25rem] border border-border bg-secondary/55 p-4 text-sm text-muted-foreground">
-                <div className="mb-2 flex items-center gap-2 text-primary"><ShieldCheck className="h-4 w-4" /><strong>Your role</strong></div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-primary"><Scale className="h-4 w-4" /><span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Amount</span></div>
+                  <strong>{record.amountLabel}</strong>
+                </div>
+                <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-primary"><CalendarClock className="h-4 w-4" /><span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Deadline</span></div>
+                  <strong>{record.deadlineLabel}</strong>
+                </div>
+                <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                  <div className="mb-2 flex items-center gap-2 text-primary"><Store className="h-4 w-4" /><span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Seller</span></div>
+                  <strong>{record.sellerLabel}</strong>
+                </div>
+              </div>
+
+              <div className="rounded-[1.25rem] border border-border bg-white/75 p-4 text-sm text-muted-foreground">
                 <p>
-                  {record.viewerRole === "viewer"
-                    ? "This wallet does not match a participant lock hash, so the detail page stays read-only until you switch wallets."
-                    : `The connected wallet matches the escrow's ${record.viewerRole} lock hash, so the actions shown here follow that role.`}
+                  <strong className="text-foreground">Assigned arbitrator:</strong> {record.arbitratorLabel}
                 </p>
-                <p className="mt-3 text-xs leading-5">
-                  Roles are discovered from on-chain lock hashes, not from usernames or off-chain accounts.
+                <p className="mt-2 leading-6">
+                  The platform assigned this arbitrator when the escrow was created, and that lock hash is now fixed in the on-chain escrow data.
                 </p>
               </div>
-            </div>
-          </CardContent>
-        </Card>
 
-        <Card className="self-start">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-primary" />Connected signer</CardTitle>
-            <CardDescription>Use the navbar wallet control to switch signer or network.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-[1.25rem] border border-primary/20 bg-primary/6 p-4 text-sm text-muted-foreground">
+                  <div className="mb-2 flex items-center gap-2 text-primary"><CircleHelp className="h-4 w-4" /><strong>What happens next</strong></div>
+                  <p className="font-medium text-foreground">{record.guidance.summary}</p>
+                  <p className="mt-2 leading-6">{record.guidance.nextStep}</p>
+                  <p className="mt-2 text-xs leading-5">{record.guidance.detail}</p>
+                  {record.guidance.supportLabel ? (
+                    <p className="mt-3 rounded-xl border border-dashed border-border bg-white/70 px-3 py-2 text-xs leading-5">
+                      {record.guidance.supportLabel}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="rounded-[1.25rem] border border-border bg-secondary/55 p-4 text-sm text-muted-foreground">
+                  <div className="mb-2 flex items-center gap-2 text-primary"><ShieldCheck className="h-4 w-4" /><strong>Your role</strong></div>
+                  <p>
+                    {record.viewerRole === "viewer"
+                      ? "This wallet does not match a participant lock hash, so the detail page stays read-only until you switch wallets."
+                      : `The connected wallet matches the escrow's ${record.viewerRole} lock hash, so the actions shown here follow that role.`}
+                  </p>
+                  <p className="mt-3 text-xs leading-5">
+                    Roles are discovered from on-chain lock hashes, not from usernames or off-chain accounts.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Available actions</CardTitle>
+              <CardDescription>
+                Direct actions come first. Advanced settlement paths stay visible with clear limitations instead of failing silently.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {record.actions.length === 0 ? (
+                <div className="rounded-[1.25rem] border border-border bg-white/75 p-4 text-sm text-muted-foreground">
+                  No actions are available for this wallet in the current escrow state.
+                </div>
+              ) : (
+                record.actions.map((action) => {
+                  const inProduct = canExecuteInProduct(
+                    action,
+                    Boolean(service),
+                    record.source === "live",
+                    hasSellerScript,
+                  );
+
+                  return (
+                    <div key={action.action} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">{action.label}</p>
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">{action.description}</p>
+                        </div>
+                        <Badge variant={inProduct ? "success" : action.mode === "direct" ? "secondary" : "outline"}>
+                          {inProduct ? "Ready in product" : action.mode === "direct" ? "Needs signer context" : "Not available yet"}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          disabled={!inProduct || busyAction !== null || !action.enabled}
+                          onClick={() => void runAction(action.action)}
+                        >
+                          {busyAction === action.action ? "Submitting..." : action.label}
+                        </Button>
+                        {!inProduct ? (
+                          <p className="self-center text-xs leading-5 text-muted-foreground">
+                            {action.action === "Complete" && !hasSellerScript
+                              ? "Release funds is unavailable on this device until the seller payout script is available here."
+                              : action.mode === "studio"
+                                ? "This action is not available in the current product flow yet."
+                                : "Reconnect the correct participant wallet to enable this action in-product."}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+
+              <div className="rounded-[1.25rem] border border-border bg-secondary/60 p-4 text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">Status</p>
+                <p className="mt-2">{status}</p>
+                {lastTxHash ? <p className="mt-2 break-all text-xs">Last transaction: {lastTxHash}</p> : null}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6 self-start xl:sticky xl:top-24">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-primary" />Connected signer</CardTitle>
+              <CardDescription>Use the navbar wallet control to switch signer or network.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
                 <Badge variant={walletState.activeSigner ? "success" : "outline"}>
                   {walletState.activeSigner ? "Signer selected" : "No signer"}
                 </Badge>
                 <Badge variant={record.viewerRole === "viewer" ? "outline" : "success"}>
                   {record.viewerRole}
                 </Badge>
+                <Badge variant="secondary">{network}</Badge>
               </div>
-              <p className="text-sm leading-6 text-muted-foreground">
-                The selected signer is matched against the buyer, seller, and assigned arbitrator lock hashes. Switch wallets from the top-right control if this page is read-only.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="xl:col-span-2">
-          <CardHeader>
-            <CardTitle>Timeline</CardTitle>
-            <CardDescription>State progression stays aligned with the escrow state machine.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {record.timeline.map((step) => {
-              const stepTimestamp = timelineTimes[step.label as keyof typeof timelineTimes] ?? null;
-              return (
-                <div key={step.label} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                  <div className="mb-2 flex items-center gap-2">
-                    <Badge variant={step.status === "done" ? "success" : step.status === "current" ? "secondary" : "outline"}>{step.status}</Badge>
-                    <strong>{step.label}</strong>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{step.note}</p>
-                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                    {stepTimestamp
-                      ? step.status === "current"
-                        ? `Updated ${stepTimestamp}`
-                        : `Recorded ${stepTimestamp}`
-                      : step.status === "pending"
-                        ? "Time appears after this step is confirmed."
-                        : "Earlier in escrow history."}
-                  </p>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Available actions</CardTitle>
-            <CardDescription>
-              Direct actions come first. Advanced settlement paths stay visible with clear limitations instead of failing silently.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {record.actions.length === 0 ? (
-              <div className="rounded-[1.25rem] border border-border bg-white/75 p-4 text-sm text-muted-foreground">
-                No actions are available for this wallet in the current escrow state.
+              <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                <p className="text-sm leading-6 text-muted-foreground">
+                  The selected signer is matched against the buyer, seller, and assigned arbitrator lock hashes. Switch wallets from the top-right control if this page is read-only.
+                </p>
               </div>
-            ) : (
-              record.actions.map((action) => {
-                const inProduct = canExecuteInProduct(
-                  action,
-                  Boolean(service),
-                  record.source === "live",
-                );
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle>Timeline</CardTitle>
+              <CardDescription>Each state change stays in escrow order, with on-chain date and time when it can be recovered.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {record.timeline.map((step, index) => {
+                const stepTimestamp = timelineTimes[step.label as keyof typeof timelineTimes] ?? null;
+                const statusLabel =
+                  step.status === "done" ? "Done" : step.status === "current" ? "Current" : "Pending";
+                const timeLabel = stepTimestamp
+                  ? step.status === "current"
+                    ? `Updated ${stepTimestamp}`
+                    : `Recorded ${stepTimestamp}`
+                  : step.status === "pending"
+                    ? "Date and time appear after this step is confirmed."
+                    : "On-chain time is not recoverable from the current history view.";
 
                 return (
-                  <div key={action.action} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
-                    <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-foreground">{action.label}</p>
-                        <p className="mt-1 text-sm leading-6 text-muted-foreground">{action.description}</p>
-                      </div>
-                      <Badge variant={inProduct ? "success" : action.mode === "direct" ? "secondary" : "outline"}>
-                        {inProduct ? "Ready in product" : action.mode === "direct" ? "Needs signer context" : "Not available yet"}
-                      </Badge>
+                  <div key={step.label} className="flex gap-4">
+                    <div className="flex flex-col items-center pt-1">
+                      <span
+                        className={`h-3 w-3 rounded-full border ${
+                          step.status === "done"
+                            ? "border-emerald-300 bg-emerald-500"
+                            : step.status === "current"
+                              ? "border-primary bg-primary"
+                              : "border-border bg-background"
+                        }`}
+                      />
+                      {index < record.timeline.length - 1 ? <span className="mt-2 h-full w-px bg-border" /> : null}
                     </div>
-                    <div className="flex flex-wrap gap-3">
-                      <Button
-                        disabled={!inProduct || busyAction !== null || !action.enabled}
-                        onClick={() => void runAction(action.action)}
-                      >
-                        {busyAction === action.action ? "Submitting..." : action.label}
-                      </Button>
-                      {!inProduct ? (
-                        <p className="self-center text-xs leading-5 text-muted-foreground">
-                          {action.mode === "studio"
-                            ? "This action is not available in the current product flow yet."
-                            : "Reconnect the correct participant wallet to enable this action in-product."}
-                        </p>
-                      ) : null}
+                    <div className={`min-w-0 flex-1 rounded-[1.25rem] border p-4 transition ${
+                      step.status === "current"
+                        ? "border-border bg-white/90"
+                        : "border-border/70 bg-secondary/35 text-muted-foreground"
+                    }`}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">{step.label}</p>
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">{step.note}</p>
+                        </div>
+                        <Badge variant={step.status === "done" ? "success" : step.status === "current" ? "secondary" : "outline"}>
+                          {statusLabel}
+                        </Badge>
+                      </div>
+                      <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-secondary/55 px-3 py-1.5 text-xs leading-5 text-muted-foreground">
+                        <CalendarClock className="h-3.5 w-3.5 shrink-0 text-primary" />
+                        <span>{timeLabel}</span>
+                      </div>
                     </div>
                   </div>
                 );
-              })
-            )}
-
-            <div className="rounded-[1.25rem] border border-border bg-secondary/60 p-4 text-sm text-muted-foreground">
-              <p className="font-medium text-foreground">Status</p>
-              <p className="mt-2">{status}</p>
-              {lastTxHash ? <p className="mt-2 break-all text-xs">Last transaction: {lastTxHash}</p> : null}
-            </div>
-          </CardContent>
-        </Card>
-
+              })}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

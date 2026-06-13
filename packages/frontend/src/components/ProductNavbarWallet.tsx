@@ -244,12 +244,15 @@ export function ProductNavbarWallet() {
                 </div>
               ) : null}
 
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-3">
                 <Button asChild variant="outline" className="justify-center">
                   <Link href="/">
                     <LayoutPanelTop className="h-4 w-4" />
-                    My escrows
+                    Home
                   </Link>
+                </Button>
+                <Button asChild variant="outline" className="justify-center">
+                  <Link href="/escrows">Escrows</Link>
                 </Button>
                 <Button asChild variant="outline" className="justify-center">
                   <Link href="/escrows/create">Create escrow</Link>
