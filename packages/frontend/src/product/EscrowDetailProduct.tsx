@@ -100,6 +100,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     hasFetchedEscrows,
     escrowFetchError,
     activeLockHash,
+    chainTipTimestampMs,
     service,
     client,
     participantScripts,
@@ -137,10 +138,10 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   }, [escrowId, escrows, routeTxHash]);
   const record = useMemo(() => {
     if (liveItem) {
-      return toLiveProductEscrow(liveItem, activeLockHash);
+      return toLiveProductEscrow(liveItem, activeLockHash, chainTipTimestampMs);
     }
     return null;
-  }, [activeLockHash, liveItem]);
+  }, [activeLockHash, chainTipTimestampMs, liveItem]);
   const buyerStoredScript = useMemo(
     () => (record ? participantScripts[record.buyerLockHash] ?? null : null),
     [participantScripts, record],

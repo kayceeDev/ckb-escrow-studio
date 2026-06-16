@@ -32,9 +32,10 @@ export function ProductHome() {
     refreshEscrows,
     status,
     activeLockHash,
+    chainTipTimestampMs,
   } = useProductWorkspaceContext();
 
-  const liveRecords = escrows.map((escrow) => toLiveProductEscrow(escrow, activeLockHash));
+  const liveRecords = escrows.map((escrow) => toLiveProductEscrow(escrow, activeLockHash, chainTipTimestampMs));
   const actorEscrows = liveRecords.filter((escrow) => escrow.viewerRole !== "viewer");
   const buyerEscrows = actorEscrows.filter((escrow) => escrow.viewerRole === "buyer");
   const sellerEscrows = actorEscrows.filter((escrow) => escrow.viewerRole === "seller");

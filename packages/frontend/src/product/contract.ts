@@ -129,8 +129,10 @@ export function getActionViews(
   escrow: Pick<EscrowCellView, "state" | "deadlineMs">,
   viewerRole: ProductViewerRole,
   nowMs = Date.now(),
+  chainTipTimestampMs?: number | bigint | null,
 ): ProductActionView[] {
-  const deadlineReached = BigInt(nowMs) >= escrow.deadlineMs;
+  const effectiveNowMs = chainTipTimestampMs == null ? BigInt(nowMs) : BigInt(chainTipTimestampMs);
+  const deadlineReached = effectiveNowMs >= escrow.deadlineMs;
 
   switch (escrow.state) {
     case "Funded":
@@ -228,8 +230,10 @@ export function guidanceForEscrow(
   escrow: Pick<EscrowCellView, "state" | "deadlineMs">,
   viewerRole: ProductViewerRole,
   nowMs = Date.now(),
+  chainTipTimestampMs?: number | bigint | null,
 ): ProductGuidance {
-  const deadlineReached = BigInt(nowMs) >= escrow.deadlineMs;
+  const effectiveNowMs = chainTipTimestampMs == null ? BigInt(nowMs) : BigInt(chainTipTimestampMs);
+  const deadlineReached = effectiveNowMs >= escrow.deadlineMs;
 
   switch (escrow.state) {
     case "Funded":
@@ -393,6 +397,7 @@ export function toSeedProductEscrow(
 export function toLiveProductEscrow(
   escrow: EscrowListItem,
   connectedLockHash?: string | null,
+  chainTipTimestampMs?: number | bigint | null,
 ): ProductEscrowRecord {
   const viewerRole = getViewerRole(escrow.decoded, connectedLockHash);
   const txLabel = shortenHash(escrow.txHash);
@@ -412,8 +417,8 @@ export function toLiveProductEscrow(
     sellerLockHash: escrow.decoded.sellerLockHash,
     arbitratorLockHash: escrow.decoded.arbitratorLockHash,
     viewerRole,
-    actions: getActionViews(escrow.decoded, viewerRole),
-    guidance: guidanceForEscrow(escrow.decoded, viewerRole),
+    actions: getActionViews(escrow.decoded, viewerRole, Date.now(), chainTipTimestampMs),
+    guidance: guidanceForEscrow(escrow.decoded, viewerRole, Date.now(), chainTipTimestampMs),
     timeline: timelineForState(escrow.decoded.state),
     source: "live",
   };

@@ -20,11 +20,12 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
     escrowFetchError,
     refreshEscrows,
     activeLockHash,
+    chainTipTimestampMs,
   } = useProductWorkspaceContext();
 
   const liveRecords = useMemo(
-    () => escrows.map((escrow) => toLiveProductEscrow(escrow, activeLockHash)),
-    [activeLockHash, escrows],
+    () => escrows.map((escrow) => toLiveProductEscrow(escrow, activeLockHash, chainTipTimestampMs)),
+    [activeLockHash, chainTipTimestampMs, escrows],
   );
   const buyingEscrows = liveRecords.filter((escrow) => escrow.viewerRole === "buyer");
   const sellingEscrows = liveRecords.filter((escrow) => escrow.viewerRole === "seller");

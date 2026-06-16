@@ -29,6 +29,20 @@ describe("product contract helpers", () => {
     ]);
   });
 
+  it("does not enable refund from browser time when chain time is still before deadline", () => {
+    const deadlineMs = 1_700_000_000_000n;
+    const actions = getActionViews(
+      { ...escrow, deadlineMs },
+      "buyer",
+      Number(deadlineMs) + 1_000,
+      Number(deadlineMs) - 1_000,
+    );
+
+    expect(actions.find((action) => action.action === "Refund")).toMatchObject({
+      enabled: false,
+    });
+  });
+
   it("returns direct dispute resolution actions only for arbitrators on disputed escrows", () => {
     const disputed = { ...escrow, state: "Disputed" as const };
     const actions = getActionViews(disputed, "arbitrator");

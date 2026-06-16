@@ -100,6 +100,7 @@ export function useProductWorkspace() {
   const [escrowFetchError, setEscrowFetchError] = useState<string | null>(null);
   const [status, setStatus] = useState("Idle");
   const [activeLockHash, setActiveLockHash] = useState<string | null>(null);
+  const [chainTipTimestampMs, setChainTipTimestampMs] = useState<bigint | null>(null);
   const [participantScripts, setParticipantScripts] = useState<ParticipantScriptRegistry>(() =>
     loadParticipantScriptRegistry(),
   );
@@ -178,6 +179,7 @@ export function useProductWorkspace() {
         setDeployment(resolveProductDeployment(nextNetwork));
         setWalletState({ wallets: [], activeSigner: null });
         setActiveLockHash(null);
+        setChainTipTimestampMs(null);
         setEscrows([]);
         setHasFetchedEscrows(false);
         setEscrowFetchError(null);
@@ -229,6 +231,8 @@ export function useProductWorkspace() {
       setIsFetchingEscrows(true);
       setEscrowFetchError(null);
       setStatus(`Fetching ${network} escrow cells...`);
+      const referenceHeader = await client.getTipHeader();
+      setChainTipTimestampMs(BigInt(String(referenceHeader.timestamp)));
       const fetched = await fetchEscrowCellsByType(deployment, 48, client);
       setEscrows(fetched);
       setHasFetchedEscrows(true);
@@ -322,6 +326,7 @@ export function useProductWorkspace() {
     setDeployment(resolveProductDeployment(nextNetwork));
     setWalletState({ wallets: [], activeSigner: null });
     setActiveLockHash(null);
+    setChainTipTimestampMs(null);
     setEscrows([]);
     setHasFetchedEscrows(false);
     setEscrowFetchError(null);
@@ -404,6 +409,7 @@ export function useProductWorkspace() {
     refreshEscrows,
     status,
     activeLockHash,
+    chainTipTimestampMs,
     service,
     participantScripts,
     saveParticipantScript,
