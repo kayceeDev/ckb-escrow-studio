@@ -205,16 +205,16 @@ export function getActionViews(
           {
             action: "ResolveToBuyer",
             label: "Resolve to buyer",
-            description: "Resolution is part of the dispute flow, but it is not available in the current product flow yet.",
+            description: "Arbitrator closes the dispute and routes escrow funds back to the buyer.",
             enabled: true,
-            mode: "studio",
+            mode: "direct",
           },
           {
             action: "ResolveToSeller",
             label: "Resolve to seller",
-            description: "Resolution is part of the dispute flow, but it is not available in the current product flow yet.",
+            description: "Arbitrator closes the dispute and routes escrow funds to the seller.",
             enabled: true,
-            mode: "studio",
+            mode: "direct",
           },
         ];
       }

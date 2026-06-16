@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import * as ccc from "@ckb-ccc/ccc";
 import { decodeEscrowData } from "@ckb-escrow/sdk";
 import {
   CalendarClock,
@@ -18,7 +19,7 @@ import { formatEscrowError } from "../error-format";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui";
 import { createExplorerTxUrl } from "../studio";
 import { ProductActionView, ProductEscrowRecord, makeLiveEscrowId, toLiveProductEscrow } from "./contract";
-import { scriptLikeFromStored } from "./registry";
+import { scriptHashFromStored, scriptLikeFromStored, storedScriptFromScriptLike } from "./registry";
 import { createEscrowInput } from "./utils";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
@@ -30,7 +31,7 @@ function canExecuteInProduct(
   action: ProductActionView,
   hasService: boolean,
   isLive: boolean,
-  hasSellerScript: boolean,
+  scripts: { buyer: boolean; seller: boolean },
 ): boolean {
   if (!isLive || !hasService || !action.enabled) {
     return false;
@@ -43,7 +44,10 @@ function canExecuteInProduct(
     case "Refund":
       return true;
     case "Complete":
-      return hasSellerScript;
+    case "ResolveToSeller":
+      return scripts.seller;
+    case "ResolveToBuyer":
+      return scripts.buyer;
     default:
       return false;
   }
@@ -65,6 +69,25 @@ function formatTimelineDateTime(value: bigint | number | string | null | undefin
   }).format(date);
 }
 
+function recipientRequirementForAction(
+  action: ProductActionView["action"],
+  record: ProductEscrowRecord,
+): { role: "buyer" | "seller"; lockHash: string; label: string } | null {
+  switch (action) {
+    case "Complete":
+    case "ResolveToSeller":
+      return { role: "seller", lockHash: record.sellerLockHash, label: "Seller payout script" };
+    case "ResolveToBuyer":
+      return { role: "buyer", lockHash: record.buyerLockHash, label: "Buyer refund script" };
+    default:
+      return null;
+  }
+}
+
+function shortHash(value: string): string {
+  return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-8)}` : value;
+}
+
 export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const {
     network,
@@ -80,10 +103,14 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     service,
     client,
     participantScripts,
+    saveParticipantScript,
   } = useProductWorkspaceContext();
   const [status, setStatus] = useState<string>("Idle");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [lastTxHash, setLastTxHash] = useState<string>("");
+  const [recoveryAddress, setRecoveryAddress] = useState("");
+  const [recoveryStatus, setRecoveryStatus] = useState("");
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [timelineTimes, setTimelineTimes] = useState<Partial<Record<"Funded" | "Delivered" | "Disputed" | "Closed", string>>>({});
 
   useEffect(() => {
@@ -114,10 +141,15 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     }
     return null;
   }, [activeLockHash, liveItem]);
+  const buyerStoredScript = useMemo(
+    () => (record ? participantScripts[record.buyerLockHash] ?? null : null),
+    [participantScripts, record],
+  );
   const sellerStoredScript = useMemo(
     () => (record ? participantScripts[record.sellerLockHash] ?? null : null),
     [participantScripts, record],
   );
+  const hasBuyerScript = buyerStoredScript != null;
   const hasSellerScript = sellerStoredScript != null;
 
   useEffect(() => {
@@ -222,8 +254,23 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           });
           break;
         case "ResolveToBuyer":
+          if (!buyerStoredScript) {
+            throw new Error("Resolve to buyer is unavailable on this device because the buyer payout script is missing.");
+          }
+          txHash = await service.sendResolveToBuyer({
+            escrowInput: cell,
+            recipientLock: scriptLikeFromStored(buyerStoredScript),
+          });
+          break;
         case "ResolveToSeller":
-          throw new Error("This action is not available in the current product flow yet.");
+          if (!sellerStoredScript) {
+            throw new Error("Resolve to seller is unavailable on this device because the seller payout script is missing.");
+          }
+          txHash = await service.sendResolveToSeller({
+            escrowInput: cell,
+            recipientLock: scriptLikeFromStored(sellerStoredScript),
+          });
+          break;
         default:
           throw new Error(`${action} still requires settlement support this week.`);
       }
@@ -236,6 +283,31 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       setStatus(hint ? `${detail} ${hint}` : detail);
     } finally {
       setBusyAction(null);
+    }
+  }
+
+  async function saveRecipientScript(requirement: { role: "buyer" | "seller"; lockHash: string; label: string }) {
+    try {
+      setRecoveryBusy(true);
+      setRecoveryStatus(`Checking ${requirement.role} address...`);
+      const address = await ccc.Address.fromString(recoveryAddress.trim(), client);
+      const stored = storedScriptFromScriptLike(address.script, requirement.label);
+      const recoveredHash = scriptHashFromStored(stored).toLowerCase();
+      const expectedHash = requirement.lockHash.toLowerCase();
+
+      if (recoveredHash !== expectedHash) {
+        throw new Error(
+          `This address resolves to ${shortHash(recoveredHash)}, but the escrow expects ${shortHash(expectedHash)}.`,
+        );
+      }
+
+      saveParticipantScript(requirement.lockHash, stored);
+      setRecoveryAddress("");
+      setRecoveryStatus(`${requirement.label} saved. The settlement action is now available.`);
+    } catch (error) {
+      setRecoveryStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveryBusy(false);
     }
   }
 
@@ -417,11 +489,15 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                 </div>
               ) : (
                 record.actions.map((action) => {
+                  const requirement = recipientRequirementForAction(action.action, record);
+                  const hasRequiredRecipientScript = requirement
+                    ? Boolean(participantScripts[requirement.lockHash])
+                    : true;
                   const inProduct = canExecuteInProduct(
                     action,
                     Boolean(service),
                     record.source === "live",
-                    hasSellerScript,
+                    { buyer: hasBuyerScript, seller: hasSellerScript },
                   );
 
                   return (
@@ -432,7 +508,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                           <p className="mt-1 text-sm leading-6 text-muted-foreground">{action.description}</p>
                         </div>
                         <Badge variant={inProduct ? "success" : action.mode === "direct" ? "secondary" : "outline"}>
-                          {inProduct ? "Ready in product" : action.mode === "direct" ? "Needs signer context" : "Not available yet"}
+                          {inProduct ? "Ready in product" : requirement && !hasRequiredRecipientScript ? "Needs payout script" : action.mode === "direct" ? "Needs signer context" : "Studio fallback"}
                         </Badge>
                       </div>
                       <div className="flex flex-wrap gap-3">
@@ -444,14 +520,39 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                         </Button>
                         {!inProduct ? (
                           <p className="self-center text-xs leading-5 text-muted-foreground">
-                            {action.action === "Complete" && !hasSellerScript
-                              ? "Release funds is unavailable on this device until the seller payout script is available here."
+                            {requirement && !hasRequiredRecipientScript
+                              ? `${requirement.label} is required before the app can build the payout transaction.`
                               : action.mode === "studio"
-                                ? "This action is not available in the current product flow yet."
+                                ? "Open Studio if you need raw debug controls for this action."
                                 : "Reconnect the correct participant wallet to enable this action in-product."}
                           </p>
                         ) : null}
                       </div>
+                      {requirement && !hasRequiredRecipientScript ? (
+                        <div className="mt-4 rounded-[1rem] border border-dashed border-primary/35 bg-primary/5 p-4">
+                          <p className="text-sm font-medium text-foreground">Recover {requirement.role} payout script</p>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                            The contract stores participant lock hashes for authorization, but settlement outputs need the full recipient lock script. Paste the {requirement.role} testnet/mainnet address that matches {shortHash(requirement.lockHash)} and the app will verify it before saving.
+                          </p>
+                          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                            <input
+                              value={recoveryAddress}
+                              onChange={(event) => setRecoveryAddress(event.target.value)}
+                              placeholder={`${requirement.role} CKB address`}
+                              className="min-h-11 flex-1 rounded-full border border-border bg-white/80 px-4 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              disabled={recoveryBusy || recoveryAddress.trim().length === 0}
+                              onClick={() => void saveRecipientScript(requirement)}
+                            >
+                              {recoveryBusy ? "Saving..." : "Save script"}
+                            </Button>
+                          </div>
+                          {recoveryStatus ? <p className="mt-2 text-xs leading-5 text-muted-foreground">{recoveryStatus}</p> : null}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })

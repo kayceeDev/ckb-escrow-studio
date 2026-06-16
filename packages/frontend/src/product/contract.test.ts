@@ -29,12 +29,15 @@ describe("product contract helpers", () => {
     ]);
   });
 
-  it("returns dispute resolution actions only for arbitrators on disputed escrows", () => {
+  it("returns direct dispute resolution actions only for arbitrators on disputed escrows", () => {
     const disputed = { ...escrow, state: "Disputed" as const };
-    expect(getActionViews(disputed, "arbitrator").map((action) => action.action)).toEqual([
+    const actions = getActionViews(disputed, "arbitrator");
+
+    expect(actions.map((action) => action.action)).toEqual([
       "ResolveToBuyer",
       "ResolveToSeller",
     ]);
+    expect(actions.every((action) => action.mode === "direct" && action.enabled)).toBe(true);
     expect(getActionViews(disputed, "buyer")).toHaveLength(0);
   });
 

@@ -26,7 +26,9 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
     () => escrows.map((escrow) => toLiveProductEscrow(escrow, activeLockHash)),
     [activeLockHash, escrows],
   );
-  const actorEscrows = liveRecords.filter((escrow) => escrow.viewerRole !== "viewer");
+  const buyingEscrows = liveRecords.filter((escrow) => escrow.viewerRole === "buyer");
+  const sellingEscrows = liveRecords.filter((escrow) => escrow.viewerRole === "seller");
+  const arbitratingEscrows = liveRecords.filter((escrow) => escrow.viewerRole === "arbitrator");
   const viewerEscrows = liveRecords.filter((escrow) => escrow.viewerRole === "viewer");
 
   return (
@@ -134,14 +136,28 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
       ) : (
         <div className="space-y-10">
           <EscrowGrid
-            title="Your live escrows"
-            body="Escrows where your connected wallet matches the buyer, seller, or assigned arbitrator lock hash."
-            records={actorEscrows}
-            emptyMessage={`No live escrows were found for this wallet on ${network} yet.`}
+            title="Buying"
+            body="Escrows where this wallet is the buyer and can cancel, refund, release, or dispute when the contract state allows it."
+            records={buyingEscrows}
+            emptyMessage={`No buyer-role escrows were found for this wallet on ${network} yet.`}
             {...(createdEscrowId !== undefined ? { highlightedEscrowId: createdEscrowId } : {})}
           />
           <EscrowGrid
-            title="Other live escrows on this network"
+            title="Selling"
+            body="Escrows where this wallet is the seller and can mark delivery or dispute after delivery."
+            records={sellingEscrows}
+            emptyMessage={`No seller-role escrows were found for this wallet on ${network} yet.`}
+            {...(createdEscrowId !== undefined ? { highlightedEscrowId: createdEscrowId } : {})}
+          />
+          <EscrowGrid
+            title="Arbitrating"
+            body="Disputed escrows assigned to this wallet as arbitrator, including direct resolve actions when recipient scripts are available."
+            records={arbitratingEscrows}
+            emptyMessage={`No arbitrator-role escrows were found for this wallet on ${network} yet.`}
+            {...(createdEscrowId !== undefined ? { highlightedEscrowId: createdEscrowId } : {})}
+          />
+          <EscrowGrid
+            title="View-only"
             body="Visible live escrow cells that do not currently match the connected participant wallet."
             records={viewerEscrows}
             emptyMessage="No additional live escrows are visible on this network right now."
