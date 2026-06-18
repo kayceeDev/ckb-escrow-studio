@@ -4,6 +4,7 @@ import type { EscrowListItem } from "../types";
 
 export type ProductViewerRole = "buyer" | "seller" | "arbitrator" | "viewer";
 export type ProductActionMode = "direct" | "studio";
+export type ProductEscrowHistoryBucket = "active" | "past";
 
 export interface ProductActionView {
   action: EscrowAction;
@@ -123,6 +124,37 @@ function timelineForState(state: EscrowState): ProductEscrowRecord["timeline"] {
           ? "current"
           : "pending",
   }));
+}
+
+const ACTIVE_ESCROW_STATES = new Set<EscrowState>(["Funded", "Delivered", "Disputed"]);
+const PAST_ESCROW_STATES = new Set<EscrowState>(["Completed", "Cancelled", "Refunded", "Resolved"]);
+
+export function getEscrowHistoryBucket(state: EscrowState): ProductEscrowHistoryBucket {
+  return ACTIVE_ESCROW_STATES.has(state) ? "active" : "past";
+}
+
+export function isParticipantEscrow(record: Pick<ProductEscrowRecord, "viewerRole">): boolean {
+  return record.viewerRole !== "viewer";
+}
+
+export function filterParticipantEscrows(records: ProductEscrowRecord[]): ProductEscrowRecord[] {
+  return records.filter(isParticipantEscrow);
+}
+
+export function filterEscrowsByHistoryBucket(
+  records: ProductEscrowRecord[],
+  bucket: ProductEscrowHistoryBucket,
+): ProductEscrowRecord[] {
+  return records.filter((record) => getEscrowHistoryBucket(record.state) === bucket);
+}
+
+export function primaryActionLabel(record: Pick<ProductEscrowRecord, "actions" | "state">): string {
+  const enabledAction = record.actions.find((action) => action.enabled);
+  if (enabledAction) {
+    return enabledAction.label;
+  }
+
+  return PAST_ESCROW_STATES.has(record.state) ? "View receipt" : "Open details";
 }
 
 export function getActionViews(

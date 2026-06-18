@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { getActionViews, getViewerRole, guidanceForEscrow } from "./contract";
+import {
+  filterEscrowsByHistoryBucket,
+  filterParticipantEscrows,
+  getActionViews,
+  getEscrowHistoryBucket,
+  getViewerRole,
+  guidanceForEscrow,
+  primaryActionLabel,
+  type ProductEscrowRecord,
+} from "./contract";
 import { hasActiveArbitratorPool, selectAssignedArbitrator, type ProductArbitratorConfig } from "../config/deployments";
 
 describe("product contract helpers", () => {
@@ -165,5 +174,76 @@ describe("product arbitrator assignment", () => {
         },
       ]),
     ).toBe(false);
+  });
+});
+
+
+describe("escrow history grouping", () => {
+  function record(state: ProductEscrowRecord["state"], viewerRole: ProductEscrowRecord["viewerRole"]): ProductEscrowRecord {
+    return {
+      id: `${state}-${viewerRole}`,
+      title: `${state} escrow`,
+      description: "test escrow",
+      state,
+      amountLabel: "1 CKB",
+      deadlineLabel: "Apr 25, 2026",
+      buyerLabel: "Buyer 0x1111",
+      sellerLabel: "Seller 0x2222",
+      arbitratorLabel: "Arbitrator 0x3333",
+      buyerLockHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+      sellerLockHash: "0x2222222222222222222222222222222222222222222222222222222222222222",
+      arbitratorLockHash: "0x3333333333333333333333333333333333333333333333333333333333333333",
+      viewerRole,
+      actions: [],
+      guidance: {
+        summary: "summary",
+        nextStep: "next",
+        detail: "detail",
+      },
+      timeline: [],
+      source: "live",
+    };
+  }
+
+  it("separates active and past escrow states", () => {
+    expect(["Funded", "Delivered", "Disputed"].map((state) => getEscrowHistoryBucket(state as ProductEscrowRecord["state"]))).toEqual([
+      "active",
+      "active",
+      "active",
+    ]);
+    expect(["Completed", "Cancelled", "Refunded", "Resolved"].map((state) => getEscrowHistoryBucket(state as ProductEscrowRecord["state"]))).toEqual([
+      "past",
+      "past",
+      "past",
+      "past",
+    ]);
+  });
+
+  it("hides view-only escrows from participant wallet history", () => {
+    const records = [record("Funded", "buyer"), record("Delivered", "viewer"), record("Resolved", "arbitrator")];
+
+    expect(filterParticipantEscrows(records).map((item) => item.viewerRole)).toEqual(["buyer", "arbitrator"]);
+  });
+
+  it("keeps terminal participant escrows in past history", () => {
+    const records = [
+      record("Funded", "buyer"),
+      record("Completed", "seller"),
+      record("Cancelled", "buyer"),
+      record("Refunded", "buyer"),
+      record("Resolved", "arbitrator"),
+    ];
+
+    expect(filterEscrowsByHistoryBucket(records, "active").map((item) => item.state)).toEqual(["Funded"]);
+    expect(filterEscrowsByHistoryBucket(records, "past").map((item) => item.state)).toEqual([
+      "Completed",
+      "Cancelled",
+      "Refunded",
+      "Resolved",
+    ]);
+  });
+
+  it("uses receipt copy when terminal escrows have no direct action", () => {
+    expect(primaryActionLabel(record("Completed", "buyer"))).toBe("View receipt");
   });
 });
