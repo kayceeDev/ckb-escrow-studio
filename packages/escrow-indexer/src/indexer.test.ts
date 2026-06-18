@@ -1,5 +1,11 @@
+import * as ccc from "@ckb-ccc/ccc";
 import { describe, expect, it } from "vitest";
-import { decodeEscrowData, encodeEscrowDataHex } from "@ckb-escrow/sdk";
+import {
+  decodeEscrowData,
+  encodeEscrowActionHex,
+  encodeEscrowDataHex,
+  type EscrowState,
+} from "@ckb-escrow/sdk";
 
 import {
   MemoryEscrowIndexerStorage,
@@ -7,14 +13,36 @@ import {
   escrowStatusForState,
   eventTypeForTransition,
   makeEscrowId,
+  scanEscrowHistory,
+  type EscrowScannerClient,
 } from "./index.js";
 
 const buyerLockHash = `0x${"11".repeat(32)}` as const;
 const sellerLockHash = `0x${"22".repeat(32)}` as const;
 const arbitratorLockHash = `0x${"33".repeat(32)}` as const;
 const origin = { txHash: `0x${"aa".repeat(32)}` as const, index: "0" };
+const typeScript = {
+  codeHash: `0x${"99".repeat(32)}`,
+  hashType: "data2" as const,
+  args: "0x",
+};
 
-function decoded(state: "Funded" | "Delivered" | "Disputed" | "Completed" | "Cancelled" | "Refunded" | "Resolved") {
+type FakeTx = {
+  transaction: {
+    transaction: {
+      inputs: Array<{ previousOutput: { txHash: `0x${string}`; index: bigint } }>;
+      outputs: Array<{ type?: ccc.ScriptLike | null }>;
+      outputsData: `0x${string}`[];
+      witnesses: `0x${string}`[];
+    };
+    blockNumber: bigint;
+  };
+  header: { timestamp: bigint };
+};
+
+type ScannerAction = "Deliver" | "Complete" | "Cancel" | "Refund" | "ResolveToBuyer" | "ResolveToSeller" | "Dispute";
+
+function decoded(state: EscrowState) {
   return decodeEscrowData(
     encodeEscrowDataHex({
       buyerLockHash,
@@ -26,6 +54,36 @@ function decoded(state: "Funded" | "Delivered" | "Disputed" | "Completed" | "Can
       description: "Index me across devices",
     }),
   );
+}
+
+function witness(action: ScannerAction) {
+  return ccc.hexFrom(ccc.WitnessArgs.from({ inputType: encodeEscrowActionHex(action) }).toBytes());
+}
+
+function txResponse(transaction: FakeTx["transaction"]["transaction"], timestamp: number): FakeTx {
+  return {
+    transaction: {
+      transaction,
+      blockNumber: BigInt(timestamp),
+    },
+    header: {
+      timestamp: BigInt(timestamp),
+    },
+  };
+}
+
+function fakeClient(txs: Record<string, FakeTx>, order: string[]): EscrowScannerClient {
+  const client = {
+    async *findTransactionsByType() {
+      for (const txHash of order) {
+        yield { txHash: txHash as `0x${string}`, blockNumber: 1n, txIndex: 0n, cells: [] };
+      }
+    },
+    async getTransactionWithHeader(txHash: ccc.HexLike) {
+      return txs[String(txHash)];
+    },
+  };
+  return client as unknown as EscrowScannerClient;
 }
 
 describe("escrow indexer model", () => {
@@ -71,5 +129,75 @@ describe("escrow indexer model", () => {
       completed,
     ]);
     await expect(storage.listEscrows({ network: "testnet", lockHash: `0x${"44".repeat(32)}`, status: "all" })).resolves.toEqual([]);
+  });
+});
+
+describe("escrow chain scanner", () => {
+  it("indexes create, transition, and terminal settlement transactions", async () => {
+    const storage = new MemoryEscrowIndexerStorage();
+    const createHash = `0x${"10".repeat(32)}`;
+    const deliverHash = `0x${"20".repeat(32)}`;
+    const completeHash = `0x${"30".repeat(32)}`;
+    const fundedData = encodeEscrowDataHex({
+      buyerLockHash,
+      sellerLockHash,
+      arbitratorLockHash,
+      amountShannons: 100_000_000n,
+      deadlineMs: 1_790_000_000_000n,
+      state: "Funded",
+      description: "Scanner lifecycle",
+    });
+    const deliveredData = encodeEscrowDataHex({
+      buyerLockHash,
+      sellerLockHash,
+      arbitratorLockHash,
+      amountShannons: 100_000_000n,
+      deadlineMs: 1_790_000_000_000n,
+      state: "Delivered",
+      description: "Scanner lifecycle",
+    });
+    const txs: Record<string, FakeTx> = {
+      [createHash]: txResponse(
+        {
+          inputs: [],
+          outputs: [{ type: typeScript }],
+          outputsData: [fundedData],
+          witnesses: [],
+        },
+        1_790_000_000_000,
+      ),
+      [deliverHash]: txResponse(
+        {
+          inputs: [{ previousOutput: { txHash: createHash as `0x${string}`, index: 0n } }],
+          outputs: [{ type: typeScript }],
+          outputsData: [deliveredData],
+          witnesses: [witness("Deliver")],
+        },
+        1_790_000_100_000,
+      ),
+      [completeHash]: txResponse(
+        {
+          inputs: [{ previousOutput: { txHash: deliverHash as `0x${string}`, index: 0n } }],
+          outputs: [{ type: null }],
+          outputsData: ["0x"],
+          witnesses: [witness("Complete")],
+        },
+        1_790_000_200_000,
+      ),
+    };
+
+    const result = await scanEscrowHistory({
+      network: "testnet",
+      client: fakeClient(txs, [createHash, deliverHash, completeHash]),
+      deployment: { typeScript },
+      storage,
+    });
+    const indexed = await storage.getEscrow({ network: "testnet", escrowId: `${createHash}:0` });
+
+    expect(result).toEqual({ scannedTransactions: 3, indexedEscrows: 3 });
+    expect(indexed?.state).toBe("Completed");
+    expect(indexed?.current).toBeNull();
+    expect(indexed?.settlementTxHash).toBe(completeHash);
+    expect(indexed?.events.map((event) => event.type)).toEqual(["Created", "Delivered", "Completed"]);
   });
 });

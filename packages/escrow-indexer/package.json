@@ -17,11 +17,12 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
+    "build": "tsup src/index.ts --format esm --dts --external @ckb-ccc/ccc --external @ckb-escrow/sdk",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@ckb-escrow/sdk": "file:../escrow-sdk"
+    "@ckb-escrow/sdk": "file:../escrow-sdk",
+    "@ckb-ccc/ccc": "^1.1.25"
   }
 }
