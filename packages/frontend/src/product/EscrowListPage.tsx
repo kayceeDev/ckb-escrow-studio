@@ -8,6 +8,7 @@ import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitl
 import {
   filterEscrowsByHistoryBucket,
   filterParticipantEscrows,
+  toIndexedProductEscrow,
   toLiveProductEscrow,
   type ProductEscrowHistoryBucket,
 } from "./contract";
@@ -33,7 +34,7 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
     walletState,
     deploymentReady,
     escrows,
-    archivedEscrows,
+    indexedEscrows,
     isFetchingEscrows,
     hasFetchedEscrows,
     escrowFetchError,
@@ -47,19 +48,25 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
     () => escrows.map((escrow) => toLiveProductEscrow(escrow, activeLockHash, chainTipTimestampMs)),
     [activeLockHash, chainTipTimestampMs, escrows],
   );
-  const archivedRecords = useMemo(
-    () => archivedEscrows.map((escrow) => ({ ...escrow, source: "archived" as const })),
-    [archivedEscrows],
+  const indexedRecords = useMemo(
+    () => indexedEscrows.map((escrow) => toIndexedProductEscrow(escrow, activeLockHash, chainTipTimestampMs)),
+    [activeLockHash, chainTipTimestampMs, indexedEscrows],
   );
-  const participantEscrows = useMemo(() => filterParticipantEscrows(liveRecords), [liveRecords]);
+  const participantEscrows = useMemo(
+    () => filterParticipantEscrows([...indexedRecords, ...liveRecords]),
+    [indexedRecords, liveRecords],
+  );
   const activeEscrows = useMemo(
-    () => filterEscrowsByHistoryBucket(participantEscrows, "active"),
+    () => {
+      const merged = filterEscrowsByHistoryBucket(participantEscrows, "active");
+      return Array.from(new Map(merged.map((escrow) => [escrow.id, escrow])).values());
+    },
     [participantEscrows],
   );
   const pastEscrows = useMemo(() => {
-    const merged = [...filterEscrowsByHistoryBucket(participantEscrows, "past"), ...archivedRecords];
+    const merged = filterEscrowsByHistoryBucket(participantEscrows, "past");
     return Array.from(new Map(merged.map((escrow) => [escrow.id, escrow])).values());
-  }, [archivedRecords, participantEscrows]);
+  }, [participantEscrows]);
   const visibleRecords = activeTab === "active" ? activeEscrows : pastEscrows;
 
   return (
@@ -186,7 +193,7 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
       ) : !hasFetchedEscrows || isFetchingEscrows ? (
         <Card>
           <CardContent className="p-6 text-sm leading-6 text-muted-foreground">
-            Fetching live escrow cells for the selected network.
+            Fetching live escrow cells and indexer-backed wallet history for the selected network.
           </CardContent>
         </Card>
       ) : (

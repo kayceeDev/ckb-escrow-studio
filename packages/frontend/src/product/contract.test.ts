@@ -9,8 +9,10 @@ import {
   guidanceForEscrow,
   closeEscrowRecordForAction,
   primaryActionLabel,
+  toIndexedProductEscrow,
   type ProductEscrowRecord,
 } from "./contract";
+import type { IndexedEscrowRecord } from "@ckb-escrow/indexer";
 import { hasActiveArbitratorPool, selectAssignedArbitrator, type ProductArbitratorConfig } from "../config/deployments";
 
 describe("product contract helpers", () => {
@@ -232,7 +234,7 @@ describe("escrow history grouping", () => {
     expect(filterEscrowsByHistoryBucket(filterParticipantEscrows(liveRecords), "past")).toEqual([]);
   });
 
-  it("creates archived terminal records before live cells disappear", () => {
+  it("derives terminal records before the indexer confirms closed history", () => {
     const completed = closeEscrowRecordForAction(record("Delivered", "buyer"), "Complete");
     const cancelled = closeEscrowRecordForAction(record("Funded", "buyer"), "Cancel");
     const refunded = closeEscrowRecordForAction(record("Funded", "buyer"), "Refund");
@@ -244,14 +246,45 @@ describe("escrow history grouping", () => {
       "Refunded",
       "Resolved",
     ]);
-    expect([completed, cancelled, refunded, resolved].every((item) => item?.source === "archived")).toBe(true);
+    expect([completed, cancelled, refunded, resolved].every((item) => item?.source === "indexed")).toBe(true);
   });
 
-  it("keeps archived terminal escrows in past history when no live cells remain", () => {
-    const archived = closeEscrowRecordForAction(record("Delivered", "buyer"), "Complete");
+  it("keeps derived terminal escrows in past history when no live cells remain", () => {
+    const derived = closeEscrowRecordForAction(record("Delivered", "buyer"), "Complete");
 
-    expect(filterEscrowsByHistoryBucket(archived ? [archived] : [], "past").map((item) => item.state)).toEqual([
+    expect(filterEscrowsByHistoryBucket(derived ? [derived] : [], "past").map((item) => item.state)).toEqual([
       "Completed",
+    ]);
+  });
+
+  it("keeps indexer-backed terminal escrows in past history without browser storage", () => {
+    const indexed: IndexedEscrowRecord = {
+      id: "0xabc:0",
+      network: "testnet",
+      origin: { txHash: `0x${"aa".repeat(32)}`, index: "0" },
+      current: null,
+      latestTxHash: `0x${"bb".repeat(32)}`,
+      settlementTxHash: `0x${"cc".repeat(32)}`,
+      state: "Completed",
+      buyerLockHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+      sellerLockHash: "0x2222222222222222222222222222222222222222222222222222222222222222",
+      arbitratorLockHash: "0x3333333333333333333333333333333333333333333333333333333333333333",
+      amountShannons: "100000000",
+      deadlineMs: "1790000000000",
+      description: "Recovered from indexer",
+      dataHex: "0x00",
+      createdAt: "2026-04-01T00:00:00.000Z",
+      updatedAt: "2026-04-02T00:00:00.000Z",
+      closedAt: "2026-04-02T00:00:00.000Z",
+      events: [],
+    };
+
+    const indexedRecord = toIndexedProductEscrow(indexed, indexed.buyerLockHash);
+
+    expect(indexedRecord.source).toBe("indexed");
+    expect(indexedRecord.viewerRole).toBe("buyer");
+    expect(filterEscrowsByHistoryBucket([indexedRecord], "past").map((item) => item.title)).toEqual([
+      "Recovered from indexer",
     ]);
   });
 

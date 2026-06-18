@@ -1,0 +1,27 @@
+{
+  "name": "@ckb-escrow/indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Indexer-facing escrow history model and API helpers for CKB escrow product history",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ckb-escrow/sdk": "file:../escrow-sdk"
+  }
+}

@@ -3,13 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ccc from "@ckb-ccc/ccc";
 import { EscrowService } from "@ckb-escrow/app";
+import type { IndexedEscrowRecord } from "@ckb-escrow/indexer";
 
 import { createCellDep, createTypeScript } from "./utils";
-import {
-  loadArchivedEscrows,
-  persistArchivedEscrow,
-  type ArchivedProductEscrowRecord,
-} from "./history";
+import { productIndexerClient } from "./indexer-api";
 import {
   loadParticipantScriptRegistry,
   PARTICIPANT_SCRIPT_STORAGE_KEY,
@@ -100,9 +97,7 @@ export function useProductWorkspace() {
     resolveProductDeployment(loadNetwork()),
   );
   const [escrows, setEscrows] = useState<EscrowListItem[]>([]);
-  const [archivedEscrows, setArchivedEscrows] = useState<ArchivedProductEscrowRecord[]>(() =>
-    loadArchivedEscrows(loadNetwork()),
-  );
+  const [indexedEscrows, setIndexedEscrows] = useState<IndexedEscrowRecord[]>([]);
   const [isFetchingEscrows, setIsFetchingEscrows] = useState(false);
   const [hasFetchedEscrows, setHasFetchedEscrows] = useState(false);
   const [escrowFetchError, setEscrowFetchError] = useState<string | null>(null);
@@ -189,7 +184,7 @@ export function useProductWorkspace() {
         setActiveLockHash(null);
         setChainTipTimestampMs(null);
         setEscrows([]);
-        setArchivedEscrows(loadArchivedEscrows(nextNetwork));
+        setIndexedEscrows([]);
         setHasFetchedEscrows(false);
         setEscrowFetchError(null);
         restoredSignerRef.current = null;
@@ -242,10 +237,16 @@ export function useProductWorkspace() {
       setStatus(`Fetching ${network} escrow cells...`);
       const referenceHeader = await client.getTipHeader();
       setChainTipTimestampMs(BigInt(String(referenceHeader.timestamp)));
-      const fetched = await fetchEscrowCellsByType(deployment, 48, client);
+      const [fetched, indexed] = await Promise.all([
+        fetchEscrowCellsByType(deployment, 48, client),
+        activeLockHash
+          ? productIndexerClient.listEscrows({ network, lockHash: activeLockHash, status: "all" })
+          : Promise.resolve([]),
+      ]);
       setEscrows(fetched);
+      setIndexedEscrows(indexed);
       setHasFetchedEscrows(true);
-      setStatus(`Fetched ${fetched.length} ${network} escrow cell(s).`);
+      setStatus(`Fetched ${fetched.length} live cell(s) and ${indexed.length} indexed history record(s).`);
       return fetched;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -256,7 +257,7 @@ export function useProductWorkspace() {
     } finally {
       setIsFetchingEscrows(false);
     }
-  }, [client, deployment, network]);
+  }, [activeLockHash, client, deployment, network]);
 
   useEffect(() => {
     if (isDeploymentReady(deployment)) {
@@ -265,7 +266,7 @@ export function useProductWorkspace() {
     }
 
     setEscrows([]);
-    setArchivedEscrows(loadArchivedEscrows(network));
+    setIndexedEscrows([]);
     setHasFetchedEscrows(false);
     setEscrowFetchError(null);
   }, [deployment, network, refreshEscrows]);
@@ -338,7 +339,7 @@ export function useProductWorkspace() {
     setActiveLockHash(null);
     setChainTipTimestampMs(null);
     setEscrows([]);
-    setArchivedEscrows(loadArchivedEscrows(nextNetwork));
+    setIndexedEscrows([]);
     setHasFetchedEscrows(false);
     setEscrowFetchError(null);
     restoredSignerRef.current = null;
@@ -391,10 +392,6 @@ export function useProductWorkspace() {
       });
   }, [network, walletState.activeSigner, walletState.wallets]);
 
-  const archiveEscrow = useCallback((record: ArchivedProductEscrowRecord | Parameters<typeof persistArchivedEscrow>[1], settlementTxHash: string) => {
-    setArchivedEscrows(persistArchivedEscrow(network, record, settlementTxHash));
-  }, [network]);
-
   const saveParticipantScript = useCallback((lockHash: string, script: StoredParticipantScript) => {
     setParticipantScripts((current) => ({
       ...current,
@@ -418,7 +415,7 @@ export function useProductWorkspace() {
     deployment,
     deploymentReady: isDeploymentReady(deployment),
     escrows,
-    archivedEscrows,
+    indexedEscrows,
     isFetchingEscrows,
     hasFetchedEscrows,
     escrowFetchError,
@@ -428,7 +425,6 @@ export function useProductWorkspace() {
     chainTipTimestampMs,
     service,
     participantScripts,
-    archiveEscrow,
     saveParticipantScript,
   };
 }

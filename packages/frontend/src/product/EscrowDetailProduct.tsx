@@ -21,7 +21,6 @@ import { createExplorerTxUrl } from "../studio";
 import {
   ProductActionView,
   ProductEscrowRecord,
-  closeEscrowRecordForAction,
   makeLiveEscrowId,
   toLiveProductEscrow,
 } from "./contract";
@@ -110,7 +109,6 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     service,
     client,
     participantScripts,
-    archiveEscrow,
     saveParticipantScript,
   } = useProductWorkspaceContext();
   const [status, setStatus] = useState<string>("Idle");
@@ -283,13 +281,13 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           throw new Error(`${action} still requires settlement support this week.`);
       }
 
-      const archivedRecord = closeEscrowRecordForAction(record, action);
-      if (archivedRecord) {
-        archiveEscrow(archivedRecord, txHash);
-      }
-
       setLastTxHash(txHash);
-      setStatus(`${action} submitted.`);
+      const isTerminalAction = ["Cancel", "Refund", "Complete", "ResolveToBuyer", "ResolveToSeller"].includes(action);
+      setStatus(
+        isTerminalAction
+          ? `${action} submitted. Waiting for the escrow indexer to recover the closed history record.`
+          : `${action} submitted.`,
+      );
       await refreshEscrows();
     } catch (error) {
       const { detail, hint } = formatEscrowError(error);

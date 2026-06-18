@@ -1,4 +1,5 @@
 import type { EscrowAction, EscrowCellView, EscrowState } from "@ckb-escrow/sdk";
+import type { IndexedEscrowRecord } from "@ckb-escrow/indexer";
 
 import type { EscrowListItem } from "../types";
 
@@ -42,7 +43,7 @@ export interface ProductEscrowRecord {
     note: string;
     status: "done" | "current" | "pending";
   }>;
-  source: "seed" | "live" | "archived";
+  source: "seed" | "live" | "indexed";
 }
 
 export function makeLiveEscrowId(txHash: string, index: string): string {
@@ -423,7 +424,7 @@ export function closeEscrowRecordForAction(
     actions: [],
     guidance: guidanceForEscrow({ state: terminalState, deadlineMs: 0n }, record.viewerRole),
     timeline: timelineForState(terminalState),
-    source: "archived",
+    source: "indexed",
   };
 }
 
@@ -489,5 +490,45 @@ export function toLiveProductEscrow(
     guidance: guidanceForEscrow(escrow.decoded, viewerRole, Date.now(), chainTipTimestampMs),
     timeline: timelineForState(escrow.decoded.state),
     source: "live",
+  };
+}
+
+export function toIndexedProductEscrow(
+  escrow: IndexedEscrowRecord,
+  connectedLockHash?: string | null,
+  chainTipTimestampMs?: number | bigint | null,
+): ProductEscrowRecord {
+  const decoded: EscrowCellView = {
+    buyerLockHash: escrow.buyerLockHash,
+    sellerLockHash: escrow.sellerLockHash,
+    arbitratorLockHash: escrow.arbitratorLockHash,
+    amountShannons: BigInt(escrow.amountShannons),
+    deadlineMs: BigInt(escrow.deadlineMs),
+    state: escrow.state,
+    description: new TextEncoder().encode(escrow.description),
+    descriptionText: escrow.description,
+    dataHex: escrow.dataHex,
+  };
+  const viewerRole = getViewerRole(decoded, connectedLockHash);
+  const description = escrow.description || `Escrow ${shortenHash(escrow.id)}`;
+
+  return {
+    id: escrow.id,
+    title: description,
+    description,
+    state: escrow.state,
+    amountLabel: formatAmount(decoded.amountShannons),
+    deadlineLabel: formatDeadline(decoded.deadlineMs),
+    buyerLabel: `Buyer ${shortenHash(escrow.buyerLockHash)}`,
+    sellerLabel: `Seller ${shortenHash(escrow.sellerLockHash)}`,
+    arbitratorLabel: `Arbitrator ${shortenHash(escrow.arbitratorLockHash)}`,
+    buyerLockHash: escrow.buyerLockHash,
+    sellerLockHash: escrow.sellerLockHash,
+    arbitratorLockHash: escrow.arbitratorLockHash,
+    viewerRole,
+    actions: getActionViews(decoded, viewerRole, Date.now(), chainTipTimestampMs),
+    guidance: guidanceForEscrow(decoded, viewerRole, Date.now(), chainTipTimestampMs),
+    timeline: timelineForState(escrow.state),
+    source: "indexed",
   };
 }
