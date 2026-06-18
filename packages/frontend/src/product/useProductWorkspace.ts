@@ -6,6 +6,11 @@ import { EscrowService } from "@ckb-escrow/app";
 
 import { createCellDep, createTypeScript } from "./utils";
 import {
+  loadArchivedEscrows,
+  persistArchivedEscrow,
+  type ArchivedProductEscrowRecord,
+} from "./history";
+import {
   loadParticipantScriptRegistry,
   PARTICIPANT_SCRIPT_STORAGE_KEY,
   persistParticipantScriptRegistry,
@@ -95,6 +100,9 @@ export function useProductWorkspace() {
     resolveProductDeployment(loadNetwork()),
   );
   const [escrows, setEscrows] = useState<EscrowListItem[]>([]);
+  const [archivedEscrows, setArchivedEscrows] = useState<ArchivedProductEscrowRecord[]>(() =>
+    loadArchivedEscrows(loadNetwork()),
+  );
   const [isFetchingEscrows, setIsFetchingEscrows] = useState(false);
   const [hasFetchedEscrows, setHasFetchedEscrows] = useState(false);
   const [escrowFetchError, setEscrowFetchError] = useState<string | null>(null);
@@ -181,6 +189,7 @@ export function useProductWorkspace() {
         setActiveLockHash(null);
         setChainTipTimestampMs(null);
         setEscrows([]);
+        setArchivedEscrows(loadArchivedEscrows(nextNetwork));
         setHasFetchedEscrows(false);
         setEscrowFetchError(null);
         restoredSignerRef.current = null;
@@ -256,9 +265,10 @@ export function useProductWorkspace() {
     }
 
     setEscrows([]);
+    setArchivedEscrows(loadArchivedEscrows(network));
     setHasFetchedEscrows(false);
     setEscrowFetchError(null);
-  }, [deployment, refreshEscrows]);
+  }, [deployment, network, refreshEscrows]);
 
   const service = useMemo(
     () =>
@@ -328,6 +338,7 @@ export function useProductWorkspace() {
     setActiveLockHash(null);
     setChainTipTimestampMs(null);
     setEscrows([]);
+    setArchivedEscrows(loadArchivedEscrows(nextNetwork));
     setHasFetchedEscrows(false);
     setEscrowFetchError(null);
     restoredSignerRef.current = null;
@@ -380,6 +391,10 @@ export function useProductWorkspace() {
       });
   }, [network, walletState.activeSigner, walletState.wallets]);
 
+  const archiveEscrow = useCallback((record: ArchivedProductEscrowRecord | Parameters<typeof persistArchivedEscrow>[1], settlementTxHash: string) => {
+    setArchivedEscrows(persistArchivedEscrow(network, record, settlementTxHash));
+  }, [network]);
+
   const saveParticipantScript = useCallback((lockHash: string, script: StoredParticipantScript) => {
     setParticipantScripts((current) => ({
       ...current,
@@ -403,6 +418,7 @@ export function useProductWorkspace() {
     deployment,
     deploymentReady: isDeploymentReady(deployment),
     escrows,
+    archivedEscrows,
     isFetchingEscrows,
     hasFetchedEscrows,
     escrowFetchError,
@@ -412,6 +428,7 @@ export function useProductWorkspace() {
     chainTipTimestampMs,
     service,
     participantScripts,
+    archiveEscrow,
     saveParticipantScript,
   };
 }

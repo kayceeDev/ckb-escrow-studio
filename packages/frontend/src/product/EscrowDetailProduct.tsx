@@ -18,7 +18,13 @@ import {
 import { formatEscrowError } from "../error-format";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui";
 import { createExplorerTxUrl } from "../studio";
-import { ProductActionView, ProductEscrowRecord, makeLiveEscrowId, toLiveProductEscrow } from "./contract";
+import {
+  ProductActionView,
+  ProductEscrowRecord,
+  closeEscrowRecordForAction,
+  makeLiveEscrowId,
+  toLiveProductEscrow,
+} from "./contract";
 import { scriptHashFromStored, scriptLikeFromStored, storedScriptFromScriptLike } from "./registry";
 import { createEscrowInput } from "./utils";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
@@ -104,6 +110,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     service,
     client,
     participantScripts,
+    archiveEscrow,
     saveParticipantScript,
   } = useProductWorkspaceContext();
   const [status, setStatus] = useState<string>("Idle");
@@ -274,6 +281,11 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           break;
         default:
           throw new Error(`${action} still requires settlement support this week.`);
+      }
+
+      const archivedRecord = closeEscrowRecordForAction(record, action);
+      if (archivedRecord) {
+        archiveEscrow(archivedRecord, txHash);
       }
 
       setLastTxHash(txHash);

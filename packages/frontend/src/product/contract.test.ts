@@ -7,6 +7,7 @@ import {
   getEscrowHistoryBucket,
   getViewerRole,
   guidanceForEscrow,
+  closeEscrowRecordForAction,
   primaryActionLabel,
   type ProductEscrowRecord,
 } from "./contract";
@@ -223,6 +224,35 @@ describe("escrow history grouping", () => {
     const records = [record("Funded", "buyer"), record("Delivered", "viewer"), record("Resolved", "arbitrator")];
 
     expect(filterParticipantEscrows(records).map((item) => item.viewerRole)).toEqual(["buyer", "arbitrator"]);
+  });
+
+  it("reproduces missing past history when terminal escrows disappear from live cells", () => {
+    const liveRecords: ProductEscrowRecord[] = [];
+
+    expect(filterEscrowsByHistoryBucket(filterParticipantEscrows(liveRecords), "past")).toEqual([]);
+  });
+
+  it("creates archived terminal records before live cells disappear", () => {
+    const completed = closeEscrowRecordForAction(record("Delivered", "buyer"), "Complete");
+    const cancelled = closeEscrowRecordForAction(record("Funded", "buyer"), "Cancel");
+    const refunded = closeEscrowRecordForAction(record("Funded", "buyer"), "Refund");
+    const resolved = closeEscrowRecordForAction(record("Disputed", "arbitrator"), "ResolveToSeller");
+
+    expect([completed?.state, cancelled?.state, refunded?.state, resolved?.state]).toEqual([
+      "Completed",
+      "Cancelled",
+      "Refunded",
+      "Resolved",
+    ]);
+    expect([completed, cancelled, refunded, resolved].every((item) => item?.source === "archived")).toBe(true);
+  });
+
+  it("keeps archived terminal escrows in past history when no live cells remain", () => {
+    const archived = closeEscrowRecordForAction(record("Delivered", "buyer"), "Complete");
+
+    expect(filterEscrowsByHistoryBucket(archived ? [archived] : [], "past").map((item) => item.state)).toEqual([
+      "Completed",
+    ]);
   });
 
   it("keeps terminal participant escrows in past history", () => {

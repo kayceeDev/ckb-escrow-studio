@@ -33,6 +33,7 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
     walletState,
     deploymentReady,
     escrows,
+    archivedEscrows,
     isFetchingEscrows,
     hasFetchedEscrows,
     escrowFetchError,
@@ -46,15 +47,19 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
     () => escrows.map((escrow) => toLiveProductEscrow(escrow, activeLockHash, chainTipTimestampMs)),
     [activeLockHash, chainTipTimestampMs, escrows],
   );
+  const archivedRecords = useMemo(
+    () => archivedEscrows.map((escrow) => ({ ...escrow, source: "archived" as const })),
+    [archivedEscrows],
+  );
   const participantEscrows = useMemo(() => filterParticipantEscrows(liveRecords), [liveRecords]);
   const activeEscrows = useMemo(
     () => filterEscrowsByHistoryBucket(participantEscrows, "active"),
     [participantEscrows],
   );
-  const pastEscrows = useMemo(
-    () => filterEscrowsByHistoryBucket(participantEscrows, "past"),
-    [participantEscrows],
-  );
+  const pastEscrows = useMemo(() => {
+    const merged = [...filterEscrowsByHistoryBucket(participantEscrows, "past"), ...archivedRecords];
+    return Array.from(new Map(merged.map((escrow) => [escrow.id, escrow])).values());
+  }, [archivedRecords, participantEscrows]);
   const visibleRecords = activeTab === "active" ? activeEscrows : pastEscrows;
 
   return (

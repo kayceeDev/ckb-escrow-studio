@@ -42,7 +42,7 @@ export interface ProductEscrowRecord {
     note: string;
     status: "done" | "current" | "pending";
   }>;
-  source: "seed" | "live";
+  source: "seed" | "live" | "archived";
 }
 
 export function makeLiveEscrowId(txHash: string, index: string): string {
@@ -389,6 +389,42 @@ export function guidanceForEscrow(
         detail: "This record was decoded successfully, but the product does not yet have custom wording for the current state.",
       };
   }
+}
+
+
+export function terminalStateForAction(action: EscrowAction): EscrowState | null {
+  switch (action) {
+    case "Cancel":
+      return "Cancelled";
+    case "Refund":
+      return "Refunded";
+    case "Complete":
+      return "Completed";
+    case "ResolveToBuyer":
+    case "ResolveToSeller":
+      return "Resolved";
+    default:
+      return null;
+  }
+}
+
+export function closeEscrowRecordForAction(
+  record: ProductEscrowRecord,
+  action: EscrowAction,
+): ProductEscrowRecord | null {
+  const terminalState = terminalStateForAction(action);
+  if (!terminalState) {
+    return null;
+  }
+
+  return {
+    ...record,
+    state: terminalState,
+    actions: [],
+    guidance: guidanceForEscrow({ state: terminalState, deadlineMs: 0n }, record.viewerRole),
+    timeline: timelineForState(terminalState),
+    source: "archived",
+  };
 }
 
 export function toSeedProductEscrow(
