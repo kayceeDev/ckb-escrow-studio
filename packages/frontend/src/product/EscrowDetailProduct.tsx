@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import * as ccc from "@ckb-ccc/ccc";
 import { decodeEscrowData } from "@ckb-escrow/sdk";
+import type { IndexedEscrowRecord } from "@ckb-escrow/indexer";
 import {
   CalendarClock,
   CircleHelp,
@@ -22,14 +23,16 @@ import {
   ProductActionView,
   ProductEscrowRecord,
   makeLiveEscrowId,
+  toIndexedProductEscrow,
   toLiveProductEscrow,
 } from "./contract";
+import { productIndexerClient } from "./indexer-api";
 import { scriptHashFromStored, scriptLikeFromStored, storedScriptFromScriptLike } from "./registry";
 import { createEscrowInput } from "./utils";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
 function ActionBadge({ source }: { source: ProductEscrowRecord["source"] }) {
-  return <Badge variant={source === "live" ? "success" : "outline"}>Live escrow</Badge>;
+  return <Badge variant={source === "live" ? "success" : "outline"}>{source === "live" ? "Live escrow" : "Indexed receipt"}</Badge>;
 }
 
 function canExecuteInProduct(
@@ -100,6 +103,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     deployment,
     deploymentReady,
     escrows,
+    indexedEscrows,
     refreshEscrows,
     isFetchingEscrows,
     hasFetchedEscrows,
@@ -117,6 +121,9 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const [recoveryAddress, setRecoveryAddress] = useState("");
   const [recoveryStatus, setRecoveryStatus] = useState("");
   const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [indexedDetail, setIndexedDetail] = useState<IndexedEscrowRecord | null>(null);
+  const [isFetchingIndexedDetail, setIsFetchingIndexedDetail] = useState(false);
+  const [indexedDetailError, setIndexedDetailError] = useState<string | null>(null);
   const [timelineTimes, setTimelineTimes] = useState<Partial<Record<"Funded" | "Delivered" | "Disputed" | "Closed", string>>>({});
 
   useEffect(() => {
@@ -141,12 +148,19 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
 
     return null;
   }, [escrowId, escrows, routeTxHash]);
+  const indexedItem = useMemo(
+    () => indexedEscrows.find((escrow) => escrow.id === escrowId) ?? indexedDetail,
+    [escrowId, indexedDetail, indexedEscrows],
+  );
   const record = useMemo(() => {
     if (liveItem) {
       return toLiveProductEscrow(liveItem, activeLockHash, chainTipTimestampMs);
     }
+    if (indexedItem) {
+      return toIndexedProductEscrow(indexedItem, activeLockHash, chainTipTimestampMs);
+    }
     return null;
-  }, [activeLockHash, chainTipTimestampMs, liveItem]);
+  }, [activeLockHash, chainTipTimestampMs, indexedItem, liveItem]);
   const buyerStoredScript = useMemo(
     () => (record ? participantScripts[record.buyerLockHash] ?? null : null),
     [participantScripts, record],
@@ -159,7 +173,49 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const hasSellerScript = sellerStoredScript != null;
 
   useEffect(() => {
+    setIndexedDetail(null);
+    setIndexedDetailError(null);
+  }, [escrowId, network]);
+
+  useEffect(() => {
+    async function loadIndexedDetail() {
+      if (!deploymentReady || liveItem || indexedItem || isFetchingEscrows || !hasFetchedEscrows) {
+        return;
+      }
+
+      try {
+        setIsFetchingIndexedDetail(true);
+        setIndexedDetailError(null);
+        const fetched = await productIndexerClient.getEscrow({ network, escrowId });
+        setIndexedDetail(fetched);
+      } catch (error) {
+        setIndexedDetailError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setIsFetchingIndexedDetail(false);
+      }
+    }
+
+    void loadIndexedDetail();
+  }, [deploymentReady, escrowId, hasFetchedEscrows, indexedItem, isFetchingEscrows, liveItem, network]);
+
+  useEffect(() => {
     async function loadTimelineTimes() {
+      if (indexedItem) {
+        const nextTimelineTimes: Partial<Record<"Funded" | "Delivered" | "Disputed" | "Closed", string>> = {};
+        for (const event of indexedItem.events) {
+          const timelineLabel =
+            event.toState === "Completed" || event.toState === "Refunded" || event.toState === "Cancelled" || event.toState === "Resolved"
+              ? "Closed"
+              : event.toState;
+          const timestampLabel = formatTimelineDateTime(event.blockTimestamp ?? event.createdAt);
+          if (timestampLabel && !nextTimelineTimes[timelineLabel]) {
+            nextTimelineTimes[timelineLabel] = timestampLabel;
+          }
+        }
+        setTimelineTimes(nextTimelineTimes);
+        return;
+      }
+
       if (!liveItem) {
         setTimelineTimes({});
         return;
@@ -218,7 +274,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     }
 
     void loadTimelineTimes();
-  }, [client, liveItem]);
+  }, [client, indexedItem, liveItem]);
 
   async function runAction(action: ProductActionView["action"]) {
     if (!service || !liveItem || !record) {
@@ -342,14 +398,14 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     );
   }
 
-  if (!record && (isFetchingEscrows || !hasFetchedEscrows)) {
+  if (!record && (isFetchingEscrows || !hasFetchedEscrows || isFetchingIndexedDetail)) {
     return (
       <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
         <Card>
           <CardContent className="space-y-4 p-8">
-            <p className="text-lg font-semibold">Loading live escrow</p>
+            <p className="text-lg font-semibold">Loading escrow</p>
             <p className="text-sm text-muted-foreground">
-              Fetching live escrow cells for the current network before deciding whether this route exists.
+              Fetching live cells first, then checking the indexer for closed escrow history.
             </p>
           </CardContent>
         </Card>
@@ -357,13 +413,13 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     );
   }
 
-  if (!record && escrowFetchError) {
+  if (!record && (escrowFetchError || indexedDetailError)) {
     return (
       <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
         <Card>
           <CardContent className="space-y-4 p-8">
             <p className="text-lg font-semibold">Could not load this escrow yet</p>
-            <p className="text-sm text-muted-foreground">{escrowFetchError}</p>
+            <p className="text-sm text-muted-foreground">{escrowFetchError ?? indexedDetailError}</p>
             <div className="flex flex-wrap gap-3">
               <Button onClick={() => void refreshEscrows()} disabled={isFetchingEscrows}>
                 <RefreshCcw className="h-4 w-4" />
@@ -386,7 +442,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           <CardContent className="space-y-4 p-8">
             <p className="text-lg font-semibold">Escrow not found on this network</p>
             <p className="text-sm text-muted-foreground">
-              We refreshed live escrows for {network}, but this `txHash:index` route was not present in the fetched result set. Confirm the network and retry discovery before assuming the escrow is missing.
+              We refreshed live escrows and checked the indexer for {network}, but this `txHash:index` route was not present. Confirm the network and retry discovery before assuming the escrow is missing.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button onClick={() => void refreshEscrows()} disabled={isFetchingEscrows}>

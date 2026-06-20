@@ -288,6 +288,38 @@ describe("escrow history grouping", () => {
     ]);
   });
 
+  it("can render indexed past escrow details when the live cell is gone", () => {
+    const escrowId = "0xfcf7e83ab33b6d9e825a331cbe3bac9f9b39a689c4a3fdc1ea41b278cb8cb0a8:0";
+    const indexed: IndexedEscrowRecord = {
+      id: escrowId,
+      network: "testnet",
+      origin: { txHash: "0xfcf7e83ab33b6d9e825a331cbe3bac9f9b39a689c4a3fdc1ea41b278cb8cb0a8", index: "0" },
+      current: null,
+      latestTxHash: `0x${"bb".repeat(32)}`,
+      settlementTxHash: `0x${"cc".repeat(32)}`,
+      state: "Completed",
+      buyerLockHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+      sellerLockHash: "0x2222222222222222222222222222222222222222222222222222222222222222",
+      arbitratorLockHash: "0x3333333333333333333333333333333333333333333333333333333333333333",
+      amountShannons: "100000000",
+      deadlineMs: "1790000000000",
+      description: "Closed escrow receipt",
+      dataHex: "0x00",
+      createdAt: "2026-04-01T00:00:00.000Z",
+      updatedAt: "2026-04-02T00:00:00.000Z",
+      closedAt: "2026-04-02T00:00:00.000Z",
+      events: [],
+    };
+    const liveRecords: ProductEscrowRecord[] = [];
+    const indexedRecord = toIndexedProductEscrow(indexed, indexed.buyerLockHash);
+
+    expect(liveRecords.find((item) => item.id === escrowId)).toBeUndefined();
+    expect(indexedRecord.id).toBe(escrowId);
+    expect(indexedRecord.source).toBe("indexed");
+    expect(indexedRecord.state).toBe("Completed");
+    expect(primaryActionLabel(indexedRecord)).toBe("View receipt");
+  });
+
   it("keeps terminal participant escrows in past history", () => {
     const records = [
       record("Funded", "buyer"),

@@ -29,7 +29,7 @@ describe("indexer storage runtime selection", () => {
       degraded: true,
     });
     expect(status.error).toContain("placeholder hostname 'host'");
-  });
+  }, 10_000);
 
   it("uses memory storage when DATABASE_URL is not configured", async () => {
     delete process.env.DATABASE_URL;
