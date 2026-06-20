@@ -1,7 +1,9 @@
 import * as ccc from "@ckb-ccc/ccc";
 import {
   MemoryEscrowIndexerStorage,
+  PostgresEscrowIndexerStorage,
   scanEscrowHistory,
+  type EscrowIndexerStorage,
   type EscrowScannerClient,
   type IndexedEscrowNetwork,
 } from "@ckb-escrow/indexer";
@@ -10,13 +12,21 @@ import { resolveProductDeployment } from "../config/deployments";
 import { isDeploymentReady, NETWORK_CLIENTS } from "../studio";
 
 declare global {
-  // Keep one dev storage instance across Next.js module reloads.
-  var __ckbEscrowIndexerStorage: MemoryEscrowIndexerStorage | undefined;
+  var __ckbEscrowIndexerStorage: EscrowIndexerStorage | undefined;
   var __ckbEscrowIndexerSyncs: Partial<Record<IndexedEscrowNetwork, Promise<void>>> | undefined;
 }
 
-export function getEscrowIndexerStorage(): MemoryEscrowIndexerStorage {
-  globalThis.__ckbEscrowIndexerStorage ??= new MemoryEscrowIndexerStorage();
+function createIndexerStorage(): EscrowIndexerStorage {
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (databaseUrl) {
+    return new PostgresEscrowIndexerStorage({ connectionString: databaseUrl });
+  }
+
+  return new MemoryEscrowIndexerStorage();
+}
+
+export function getEscrowIndexerStorage(): EscrowIndexerStorage {
+  globalThis.__ckbEscrowIndexerStorage ??= createIndexerStorage();
   return globalThis.__ckbEscrowIndexerStorage;
 }
 

@@ -22,7 +22,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ckb-ccc/ccc": "^1.1.25",
     "@ckb-escrow/sdk": "file:../escrow-sdk",
-    "@ckb-ccc/ccc": "^1.1.25"
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0"
   }
 }
