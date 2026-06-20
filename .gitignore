@@ -5,3 +5,4 @@
 /packages/*/tsconfig.tsbuildinfo
 
 .codex
+.env*

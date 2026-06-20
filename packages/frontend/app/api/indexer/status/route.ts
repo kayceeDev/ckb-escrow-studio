@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { parseNetwork } from "@ckb-escrow/indexer";
 
-import { getEscrowIndexerStorage, syncEscrowIndexer } from "../../../../src/server/indexer-store";
+import {
+  getEscrowIndexerStorage,
+  getIndexerStorageRuntimeStatus,
+  syncEscrowIndexer,
+} from "../../../../src/server/indexer-store";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -9,5 +13,8 @@ export async function GET(request: Request) {
   await syncEscrowIndexer(network);
   const status = await getEscrowIndexerStorage().getStatus(network);
 
-  return NextResponse.json(status);
+  return NextResponse.json({
+    ...status,
+    runtime: getIndexerStorageRuntimeStatus(),
+  });
 }
