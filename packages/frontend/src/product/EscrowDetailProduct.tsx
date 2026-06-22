@@ -114,12 +114,12 @@ function splitLines(value: string): string[] {
     .filter(Boolean);
 }
 
-function buildEvidenceItems(input: {
+async function buildEvidenceItems(input: {
   statement: string;
   links: string;
   files: FileEvidenceDraft[];
   submittedByLockHash: `0x${string}`;
-}): DraftEvidenceItem[] {
+}): Promise<DraftEvidenceItem[]> {
   const evidence: DraftEvidenceItem[] = [];
   const statement = input.statement.trim();
   if (statement) {
@@ -130,7 +130,7 @@ function buildEvidenceItems(input: {
       uri: null,
       mimeType: "text/plain",
       sizeBytes: statement.length,
-      contentHash: hashEvidenceText(statement),
+      contentHash: await hashEvidenceText(statement),
       submittedByLockHash: input.submittedByLockHash,
     });
   }
@@ -143,7 +143,7 @@ function buildEvidenceItems(input: {
       uri,
       mimeType: null,
       sizeBytes: null,
-      contentHash: hashEvidenceText(uri),
+      contentHash: await hashEvidenceText(uri),
       submittedByLockHash: input.submittedByLockHash,
     });
   }
@@ -157,7 +157,7 @@ function buildEvidenceItems(input: {
       uri: null,
       mimeType: file.type || null,
       sizeBytes: file.size,
-      contentHash: hashEvidenceText(value),
+      contentHash: await hashEvidenceText(value),
       submittedByLockHash: input.submittedByLockHash,
     });
   }
@@ -381,7 +381,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       setStatus("Add a dispute reason before opening arbitration.");
       return;
     }
-    const evidence = buildEvidenceItems({
+    const evidence = await buildEvidenceItems({
       statement: disputeStatement,
       links: disputeLinks,
       files: disputeFiles,
@@ -423,7 +423,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       setStatus("Connect a participant wallet before submitting evidence.");
       return;
     }
-    const evidence = buildEvidenceItems({
+    const evidence = await buildEvidenceItems({
       statement: responseStatement,
       links: responseLinks,
       files: responseFiles,

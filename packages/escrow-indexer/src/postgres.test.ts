@@ -103,3 +103,20 @@ describe("postgres escrow indexer storage", () => {
     expect(pool.client.queries.some((query) => query.text.includes("insert into indexer_checkpoints"))).toBe(true);
   });
 });
+
+  it("requires escrow participant context before dispute writes", async () => {
+    const pool = new FakePool();
+    const storage = new PostgresEscrowIndexerStorage({ pool: pool as never });
+
+    await expect(storage.createDisputeCase({
+      network: "testnet",
+      escrowId: `0x${"aa".repeat(32)}:0`,
+      disputeTxHash: `0x${"55".repeat(32)}`,
+      openedByLockHash: buyerLockHash,
+      requestedOutcome: "buyer",
+      reason: "No escrow row exists in storage",
+      evidence: [],
+    })).rejects.toThrow(/buyer or seller/);
+
+    expect(pool.queries.some((query) => query.text.includes("select * from escrows"))).toBe(true);
+  });

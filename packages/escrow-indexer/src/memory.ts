@@ -34,6 +34,28 @@ function caseKey(network: IndexedEscrowNetwork, escrowId: string): string {
   return `${network}:${escrowId}`;
 }
 
+function normalizeLockHash(value: string): string {
+  return value.toLowerCase();
+}
+
+function isBuyerOrSeller(record: IndexedEscrowRecord, lockHash: string): boolean {
+  const normalized = normalizeLockHash(lockHash);
+  return record.buyerLockHash.toLowerCase() === normalized || record.sellerLockHash.toLowerCase() === normalized;
+}
+
+function isParticipant(record: IndexedEscrowRecord, lockHash: string): boolean {
+  const normalized = normalizeLockHash(lockHash);
+  return (
+    record.buyerLockHash.toLowerCase() === normalized ||
+    record.sellerLockHash.toLowerCase() === normalized ||
+    record.arbitratorLockHash.toLowerCase() === normalized
+  );
+}
+
+function isArbitrator(record: IndexedEscrowRecord, lockHash: string): boolean {
+  return record.arbitratorLockHash.toLowerCase() === normalizeLockHash(lockHash);
+}
+
 export class MemoryEscrowIndexerStorage implements EscrowIndexerStorage {
   private readonly records = new Map<string, IndexedEscrowRecord>();
   private readonly disputeCases = new Map<string, DisputeCaseRecord>();
@@ -66,6 +88,10 @@ export class MemoryEscrowIndexerStorage implements EscrowIndexerStorage {
   }
 
   async createDisputeCase(input: CreateDisputeCaseInput): Promise<DisputeCaseRecord> {
+    const escrow = await this.getEscrow({ network: input.network, escrowId: input.escrowId });
+    if (!escrow || !isBuyerOrSeller(escrow, input.openedByLockHash)) {
+      throw new Error("Only the escrow buyer or seller can open a dispute case");
+    }
     const record = createDisputeCaseRecord(input);
     this.disputeCases.set(caseKey(input.network, input.escrowId), record);
     return record;
@@ -75,6 +101,10 @@ export class MemoryEscrowIndexerStorage implements EscrowIndexerStorage {
     const existing = await this.getDisputeCase(input.network, input.escrowId);
     if (!existing) {
       throw new Error(`Dispute case not found for escrow ${input.escrowId}`);
+    }
+    const escrow = await this.getEscrow({ network: input.network, escrowId: input.escrowId });
+    if (!escrow || !isParticipant(escrow, input.submittedByLockHash)) {
+      throw new Error("Only escrow participants can submit dispute evidence");
     }
     const updated = appendDisputeEvidence(existing, input);
     this.disputeCases.set(caseKey(input.network, input.escrowId), updated);
@@ -89,6 +119,10 @@ export class MemoryEscrowIndexerStorage implements EscrowIndexerStorage {
     const existing = await this.getDisputeCase(input.network, input.escrowId);
     if (!existing) {
       throw new Error(`Dispute case not found for escrow ${input.escrowId}`);
+    }
+    const escrow = await this.getEscrow({ network: input.network, escrowId: input.escrowId });
+    if (!escrow || !isArbitrator(escrow, input.decidedByLockHash)) {
+      throw new Error("Only the escrow arbitrator can save an arbitrator decision");
     }
     const updated = applyArbitratorDecision(existing, input);
     this.disputeCases.set(caseKey(input.network, input.escrowId), updated);

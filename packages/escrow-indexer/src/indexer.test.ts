@@ -205,6 +205,7 @@ describe("escrow chain scanner", () => {
 describe("dispute evidence cases", () => {
   it("creates a dispute case with deterministic evidence bundle hash", async () => {
     const storage = new MemoryEscrowIndexerStorage();
+    await storage.upsertEscrow(createIndexedEscrow({ network: "testnet", origin, decoded: decoded("Delivered") }));
     const disputeCase = await storage.createDisputeCase({
       network: "testnet",
       escrowId: `${origin.txHash}:0`,
@@ -234,6 +235,7 @@ describe("dispute evidence cases", () => {
 
   it("adds participant evidence and records arbitrator decision", async () => {
     const storage = new MemoryEscrowIndexerStorage();
+    await storage.upsertEscrow(createIndexedEscrow({ network: "testnet", origin, decoded: decoded("Disputed") }));
     await storage.createDisputeCase({
       network: "testnet",
       escrowId: `${origin.txHash}:0`,
@@ -274,5 +276,45 @@ describe("dispute evidence cases", () => {
     expect(resolved.status).toBe("resolved");
     expect(resolved.decision?.outcome).toBe("seller");
     expect(resolved.decision?.evidenceBundleHash).toBe(resolved.evidenceBundleHash);
+  });
+});
+
+describe("dispute evidence participant validation", () => {
+  it("rejects dispute cases opened by non-participants", async () => {
+    const storage = new MemoryEscrowIndexerStorage();
+    await storage.upsertEscrow(createIndexedEscrow({ network: "testnet", origin, decoded: decoded("Delivered") }));
+
+    await expect(storage.createDisputeCase({
+      network: "testnet",
+      escrowId: `${origin.txHash}:0`,
+      disputeTxHash: `0x${"55".repeat(32)}`,
+      openedByLockHash: `0x${"44".repeat(32)}`,
+      requestedOutcome: "buyer",
+      reason: "I should not be able to open this",
+      evidence: [],
+    })).rejects.toThrow(/buyer or seller/);
+  });
+
+  it("rejects arbitrator decisions from non-arbitrators", async () => {
+    const storage = new MemoryEscrowIndexerStorage();
+    await storage.upsertEscrow(createIndexedEscrow({ network: "testnet", origin, decoded: decoded("Disputed") }));
+    await storage.createDisputeCase({
+      network: "testnet",
+      escrowId: `${origin.txHash}:0`,
+      disputeTxHash: `0x${"55".repeat(32)}`,
+      openedByLockHash: buyerLockHash,
+      requestedOutcome: "buyer",
+      reason: "Delivery is disputed",
+      evidence: [],
+    });
+
+    await expect(storage.saveArbitratorDecision({
+      network: "testnet",
+      escrowId: `${origin.txHash}:0`,
+      outcome: "seller",
+      decisionNote: "Fake decision",
+      resolutionTxHash: `0x${"88".repeat(32)}`,
+      decidedByLockHash: sellerLockHash,
+    })).rejects.toThrow(/arbitrator/);
   });
 });

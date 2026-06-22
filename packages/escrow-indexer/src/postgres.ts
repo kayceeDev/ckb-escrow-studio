@@ -354,6 +354,28 @@ function statusWhere(status: IndexedEscrowListQuery["status"]): string {
   return "";
 }
 
+function normalizeLockHash(value: string): string {
+  return value.toLowerCase();
+}
+
+function isBuyerOrSeller(record: IndexedEscrowRecord, lockHash: string): boolean {
+  const normalized = normalizeLockHash(lockHash);
+  return record.buyerLockHash.toLowerCase() === normalized || record.sellerLockHash.toLowerCase() === normalized;
+}
+
+function isParticipant(record: IndexedEscrowRecord, lockHash: string): boolean {
+  const normalized = normalizeLockHash(lockHash);
+  return (
+    record.buyerLockHash.toLowerCase() === normalized ||
+    record.sellerLockHash.toLowerCase() === normalized ||
+    record.arbitratorLockHash.toLowerCase() === normalized
+  );
+}
+
+function isArbitrator(record: IndexedEscrowRecord, lockHash: string): boolean {
+  return record.arbitratorLockHash.toLowerCase() === normalizeLockHash(lockHash);
+}
+
 export interface PostgresEscrowIndexerStorageOptions {
   connectionString?: string;
   pool?: Pool;
@@ -538,6 +560,10 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
 
   async createDisputeCase(input: CreateDisputeCaseInput): Promise<DisputeCaseRecord> {
     await this.ensureMigrated();
+    const escrow = await this.getEscrow({ network: input.network, escrowId: input.escrowId });
+    if (!escrow || !isBuyerOrSeller(escrow, input.openedByLockHash)) {
+      throw new Error("Only the escrow buyer or seller can open a dispute case");
+    }
     const record = createDisputeCaseRecord(input);
     const client = await this.pool.connect();
     try {
@@ -561,6 +587,10 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
     const existing = await this.getDisputeCase(input.network, input.escrowId);
     if (!existing) {
       throw new Error(`Dispute case not found for escrow ${input.escrowId}`);
+    }
+    const escrow = await this.getEscrow({ network: input.network, escrowId: input.escrowId });
+    if (!escrow || !isParticipant(escrow, input.submittedByLockHash)) {
+      throw new Error("Only escrow participants can submit dispute evidence");
     }
     const updated = appendDisputeEvidence(existing, input);
     const client = await this.pool.connect();
@@ -601,6 +631,10 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
     const existing = await this.getDisputeCase(input.network, input.escrowId);
     if (!existing) {
       throw new Error(`Dispute case not found for escrow ${input.escrowId}`);
+    }
+    const escrow = await this.getEscrow({ network: input.network, escrowId: input.escrowId });
+    if (!escrow || !isArbitrator(escrow, input.decidedByLockHash)) {
+      throw new Error("Only the escrow arbitrator can save an arbitrator decision");
     }
     const updated = applyArbitratorDecision(existing, input);
     const client = await this.pool.connect();
