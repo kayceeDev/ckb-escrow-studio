@@ -201,3 +201,78 @@ describe("escrow chain scanner", () => {
     expect(indexed?.events.map((event) => event.type)).toEqual(["Created", "Delivered", "Completed"]);
   });
 });
+
+describe("dispute evidence cases", () => {
+  it("creates a dispute case with deterministic evidence bundle hash", async () => {
+    const storage = new MemoryEscrowIndexerStorage();
+    const disputeCase = await storage.createDisputeCase({
+      network: "testnet",
+      escrowId: `${origin.txHash}:0`,
+      disputeTxHash: `0x${"55".repeat(32)}`,
+      openedByLockHash: buyerLockHash,
+      requestedOutcome: "buyer",
+      reason: "Delivery does not match the agreed scope",
+      evidence: [
+        {
+          type: "statement",
+          label: "Buyer statement",
+          value: "The delivered files are incomplete.",
+          uri: null,
+          mimeType: "text/plain",
+          sizeBytes: 35,
+          contentHash: `0x${"66".repeat(32)}`,
+          submittedByLockHash: buyerLockHash,
+        },
+      ],
+    });
+
+    expect(disputeCase.status).toBe("open");
+    expect(disputeCase.evidence).toHaveLength(1);
+    expect(disputeCase.evidenceBundleHash).toMatch(/^0x[0-9a-f]{64}$/);
+    await expect(storage.getDisputeCase("testnet", `${origin.txHash}:0`)).resolves.toEqual(disputeCase);
+  });
+
+  it("adds participant evidence and records arbitrator decision", async () => {
+    const storage = new MemoryEscrowIndexerStorage();
+    await storage.createDisputeCase({
+      network: "testnet",
+      escrowId: `${origin.txHash}:0`,
+      disputeTxHash: `0x${"55".repeat(32)}`,
+      openedByLockHash: buyerLockHash,
+      requestedOutcome: "buyer",
+      reason: "Delivery was disputed",
+      evidence: [],
+    });
+
+    const withEvidence = await storage.addDisputeEvidence({
+      network: "testnet",
+      escrowId: `${origin.txHash}:0`,
+      submittedByLockHash: sellerLockHash,
+      evidence: [
+        {
+          type: "link",
+          label: "Delivery proof",
+          value: "https://example.com/proof",
+          uri: "https://example.com/proof",
+          mimeType: null,
+          sizeBytes: null,
+          contentHash: `0x${"77".repeat(32)}`,
+        },
+      ],
+    });
+
+    expect(withEvidence.evidence).toHaveLength(1);
+    const resolved = await storage.saveArbitratorDecision({
+      network: "testnet",
+      escrowId: `${origin.txHash}:0`,
+      outcome: "seller",
+      decisionNote: "Seller provided sufficient delivery proof.",
+      resolutionTxHash: `0x${"88".repeat(32)}`,
+      decidedByLockHash: arbitratorLockHash,
+    });
+
+    expect(resolved.status).toBe("resolved");
+    expect(resolved.decision?.outcome).toBe("seller");
+    expect(resolved.decision?.evidenceBundleHash).toBe(resolved.evidenceBundleHash);
+  });
+});

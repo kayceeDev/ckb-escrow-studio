@@ -100,3 +100,175 @@ export function createIndexedEscrow(input: CreateIndexedEscrowInput): IndexedEsc
     events: input.events ?? [],
   };
 }
+
+import { createHash } from "node:crypto";
+
+import type {
+  AddDisputeEvidenceInput,
+  ArbitratorDecision,
+  CreateDisputeCaseInput,
+  DisputeCaseRecord,
+  DisputeEvidenceItem,
+  SaveArbitratorDecisionInput,
+} from "./types.js";
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function hashDisputeContent(value: unknown): `0x${string}` {
+  return `0x${createHash("sha256").update(stableJson(value)).digest("hex")}`;
+}
+
+export function makeDisputeCaseId(network: string, escrowId: string): string {
+  return `${network}:${escrowId}`;
+}
+
+export function computeEvidenceBundleHash(
+  evidence: DisputeEvidenceItem[],
+  decision?: Pick<ArbitratorDecision, "outcome" | "decisionNote" | "resolutionTxHash" | "decidedByLockHash"> | null,
+): `0x${string}` {
+  return hashDisputeContent({
+    evidence: evidence
+      .map((item) => ({
+        contentHash: item.contentHash.toLowerCase(),
+        label: item.label,
+        mimeType: item.mimeType,
+        sizeBytes: item.sizeBytes,
+        submittedByLockHash: item.submittedByLockHash.toLowerCase(),
+        type: item.type,
+        uri: item.uri,
+        value: item.value,
+      }))
+      .sort((left, right) => `${left.submittedByLockHash}:${left.type}:${left.contentHash}`.localeCompare(`${right.submittedByLockHash}:${right.type}:${right.contentHash}`)),
+    decision: decision
+      ? {
+          outcome: decision.outcome,
+          decisionNote: decision.decisionNote,
+          resolutionTxHash: decision.resolutionTxHash.toLowerCase(),
+          decidedByLockHash: decision.decidedByLockHash.toLowerCase(),
+        }
+      : null,
+  });
+}
+
+function makeEvidenceId(input: {
+  network: string;
+  escrowId: string;
+  contentHash: string;
+  submittedByLockHash: string;
+  createdAt: string;
+  index: number;
+}): string {
+  return hashDisputeContent(input);
+}
+
+export function createDisputeCaseRecord(input: CreateDisputeCaseInput): DisputeCaseRecord {
+  const now = input.createdAt ?? new Date().toISOString();
+  const caseId = makeDisputeCaseId(input.network, input.escrowId);
+  const evidence: DisputeEvidenceItem[] = (input.evidence ?? []).map((item, index) => {
+    const createdAt = item.createdAt ?? now;
+    return {
+      ...item,
+      id: makeEvidenceId({
+        network: input.network,
+        escrowId: input.escrowId,
+        contentHash: item.contentHash,
+        submittedByLockHash: item.submittedByLockHash,
+        createdAt,
+        index,
+      }),
+      caseId,
+      escrowId: input.escrowId,
+      network: input.network,
+      submittedByLockHash: item.submittedByLockHash.toLowerCase() as `0x${string}`,
+      createdAt,
+    };
+  });
+
+  return {
+    id: caseId,
+    escrowId: input.escrowId,
+    network: input.network,
+    disputeTxHash: input.disputeTxHash,
+    openedByLockHash: input.openedByLockHash.toLowerCase() as `0x${string}`,
+    requestedOutcome: input.requestedOutcome,
+    reason: input.reason,
+    status: "open",
+    evidenceBundleHash: computeEvidenceBundleHash(evidence),
+    createdAt: now,
+    updatedAt: now,
+    evidence,
+    decision: null,
+  };
+}
+
+export function appendDisputeEvidence(caseRecord: DisputeCaseRecord, input: AddDisputeEvidenceInput): DisputeCaseRecord {
+  const now = new Date().toISOString();
+  const nextEvidence = [
+    ...caseRecord.evidence,
+    ...input.evidence.map((item, index) => {
+      const createdAt = item.createdAt ?? now;
+      return {
+        ...item,
+        id: makeEvidenceId({
+          network: input.network,
+          escrowId: input.escrowId,
+          contentHash: item.contentHash,
+          submittedByLockHash: input.submittedByLockHash,
+          createdAt,
+          index: caseRecord.evidence.length + index,
+        }),
+        caseId: caseRecord.id,
+        escrowId: input.escrowId,
+        network: input.network,
+        submittedByLockHash: input.submittedByLockHash.toLowerCase() as `0x${string}`,
+        createdAt,
+      } satisfies DisputeEvidenceItem;
+    }),
+  ];
+
+  return {
+    ...caseRecord,
+    evidence: nextEvidence,
+    evidenceBundleHash: computeEvidenceBundleHash(nextEvidence, caseRecord.decision),
+    updatedAt: now,
+  };
+}
+
+export function applyArbitratorDecision(caseRecord: DisputeCaseRecord, input: SaveArbitratorDecisionInput): DisputeCaseRecord {
+  const now = input.createdAt ?? new Date().toISOString();
+  const decisionBase = {
+    outcome: input.outcome,
+    decisionNote: input.decisionNote,
+    resolutionTxHash: input.resolutionTxHash,
+    decidedByLockHash: input.decidedByLockHash.toLowerCase() as `0x${string}`,
+  };
+  const evidenceBundleHash = computeEvidenceBundleHash(caseRecord.evidence, decisionBase);
+  const decision: ArbitratorDecision = {
+    id: hashDisputeContent({ caseId: caseRecord.id, resolutionTxHash: input.resolutionTxHash }),
+    caseId: caseRecord.id,
+    escrowId: input.escrowId,
+    network: input.network,
+    evidenceBundleHash,
+    createdAt: now,
+    ...decisionBase,
+  };
+
+  return {
+    ...caseRecord,
+    status: "resolved",
+    evidenceBundleHash,
+    updatedAt: now,
+    decision,
+  };
+}

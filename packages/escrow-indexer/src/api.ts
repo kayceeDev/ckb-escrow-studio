@@ -42,3 +42,51 @@ export async function getEscrowFromStorage(
     escrow: await storage.getEscrow({ network, escrowId }),
   };
 }
+
+import type {
+  AddDisputeEvidenceInput,
+  CreateDisputeCaseInput,
+  DisputeCaseRecord,
+  SaveArbitratorDecisionInput,
+} from "./types.js";
+
+export interface DisputeCaseResponse {
+  disputeCase: DisputeCaseRecord | null;
+}
+
+export async function getDisputeCaseFromStorage(
+  storage: EscrowIndexerStorage,
+  network: IndexedEscrowNetwork,
+  escrowId: string,
+): Promise<DisputeCaseResponse> {
+  return {
+    disputeCase: await storage.getDisputeCase(network, escrowId),
+  };
+}
+
+export async function createDisputeCaseInStorage(
+  storage: EscrowIndexerStorage,
+  input: CreateDisputeCaseInput,
+): Promise<DisputeCaseResponse> {
+  return {
+    disputeCase: await storage.createDisputeCase(input),
+  };
+}
+
+export async function addDisputeEvidenceToStorage(
+  storage: EscrowIndexerStorage,
+  input: AddDisputeEvidenceInput,
+): Promise<DisputeCaseResponse> {
+  return {
+    disputeCase: await storage.addDisputeEvidence(input),
+  };
+}
+
+export async function saveArbitratorDecisionToStorage(
+  storage: EscrowIndexerStorage,
+  input: SaveArbitratorDecisionInput,
+): Promise<DisputeCaseResponse> {
+  return {
+    disputeCase: await storage.saveArbitratorDecision(input),
+  };
+}

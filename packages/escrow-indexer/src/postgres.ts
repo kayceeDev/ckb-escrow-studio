@@ -1,7 +1,17 @@
 import { Pool, type PoolClient, type PoolConfig, type QueryResultRow } from "pg";
 
-import { isEscrowInStatus } from "./model.js";
+import {
+  appendDisputeEvidence,
+  applyArbitratorDecision,
+  createDisputeCaseRecord,
+  isEscrowInStatus,
+} from "./model.js";
 import type {
+  AddDisputeEvidenceInput,
+  ArbitratorDecision,
+  CreateDisputeCaseInput,
+  DisputeCaseRecord,
+  DisputeEvidenceItem,
   EscrowIndexerStorage,
   IndexedEscrowDetailQuery,
   IndexedEscrowEvent,
@@ -10,6 +20,7 @@ import type {
   IndexedEscrowRecord,
   IndexedOutPoint,
   IndexerStatus,
+  SaveArbitratorDecisionInput,
 } from "./types.js";
 
 export const POSTGRES_SCHEMA_SQL = `
@@ -62,6 +73,62 @@ create table if not exists escrow_events (
 create index if not exists escrow_events_escrow_idx on escrow_events (network, escrow_id, created_at asc);
 create index if not exists escrow_events_tx_idx on escrow_events (network, tx_hash);
 
+create table if not exists dispute_cases (
+  id text not null,
+  escrow_id text not null,
+  network text not null,
+  dispute_tx_hash text not null,
+  opened_by_lock_hash text not null,
+  requested_outcome text not null,
+  reason text not null,
+  status text not null,
+  evidence_bundle_hash text not null,
+  created_at timestamptz not null,
+  updated_at timestamptz not null,
+  primary key (network, id)
+);
+
+create unique index if not exists dispute_cases_escrow_idx on dispute_cases (network, escrow_id);
+create index if not exists dispute_cases_status_idx on dispute_cases (network, status, updated_at desc);
+
+create table if not exists dispute_evidence (
+  id text not null,
+  case_id text not null,
+  escrow_id text not null,
+  network text not null,
+  type text not null,
+  label text not null,
+  value text not null,
+  uri text,
+  mime_type text,
+  size_bytes integer,
+  content_hash text not null,
+  submitted_by_lock_hash text not null,
+  created_at timestamptz not null,
+  primary key (network, id),
+  foreign key (network, case_id) references dispute_cases (network, id) on delete cascade
+);
+
+create index if not exists dispute_evidence_case_idx on dispute_evidence (network, case_id, created_at asc);
+create index if not exists dispute_evidence_submitter_idx on dispute_evidence (network, submitted_by_lock_hash, created_at desc);
+
+create table if not exists arbitrator_decisions (
+  id text not null,
+  case_id text not null,
+  escrow_id text not null,
+  network text not null,
+  outcome text not null,
+  decision_note text not null,
+  evidence_bundle_hash text not null,
+  resolution_tx_hash text not null,
+  decided_by_lock_hash text not null,
+  created_at timestamptz not null,
+  primary key (network, id),
+  foreign key (network, case_id) references dispute_cases (network, id) on delete cascade
+);
+
+create unique index if not exists arbitrator_decisions_case_idx on arbitrator_decisions (network, case_id);
+
 create table if not exists indexer_checkpoints (
   network text primary key,
   last_processed_block numeric(40, 0),
@@ -108,6 +175,49 @@ interface PostgresEventRow extends QueryResultRow {
   created_at: Date | string;
 }
 
+interface DisputeCaseRow extends QueryResultRow {
+  id: string;
+  escrow_id: string;
+  network: IndexedEscrowNetwork;
+  dispute_tx_hash: string;
+  opened_by_lock_hash: string;
+  requested_outcome: DisputeCaseRecord["requestedOutcome"];
+  reason: string;
+  status: DisputeCaseRecord["status"];
+  evidence_bundle_hash: string;
+  created_at: Date | string;
+  updated_at: Date | string;
+}
+
+interface DisputeEvidenceRow extends QueryResultRow {
+  id: string;
+  case_id: string;
+  escrow_id: string;
+  network: IndexedEscrowNetwork;
+  type: DisputeEvidenceItem["type"];
+  label: string;
+  value: string;
+  uri: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  content_hash: string;
+  submitted_by_lock_hash: string;
+  created_at: Date | string;
+}
+
+interface ArbitratorDecisionRow extends QueryResultRow {
+  id: string;
+  case_id: string;
+  escrow_id: string;
+  network: IndexedEscrowNetwork;
+  outcome: ArbitratorDecision["outcome"];
+  decision_note: string;
+  evidence_bundle_hash: string;
+  resolution_tx_hash: string;
+  decided_by_lock_hash: string;
+  created_at: Date | string;
+}
+
 interface CheckpointRow extends QueryResultRow {
   last_processed_block: string | null;
   updated_at: Date | string;
@@ -139,6 +249,64 @@ function eventFromRow(row: PostgresEventRow): IndexedEscrowEvent {
     actorRole: row.actor_role,
     recipientRole: row.recipient_role,
     createdAt: toIso(row.created_at) ?? new Date().toISOString(),
+  };
+}
+
+function evidenceFromRow(row: DisputeEvidenceRow): DisputeEvidenceItem {
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    escrowId: row.escrow_id,
+    network: row.network,
+    type: row.type,
+    label: row.label,
+    value: row.value,
+    uri: row.uri,
+    mimeType: row.mime_type,
+    sizeBytes: row.size_bytes,
+    contentHash: row.content_hash as `0x${string}`,
+    submittedByLockHash: row.submitted_by_lock_hash as `0x${string}`,
+    createdAt: toIso(row.created_at) ?? new Date().toISOString(),
+  };
+}
+
+function decisionFromRow(row: ArbitratorDecisionRow | undefined): ArbitratorDecision | null {
+  if (!row) {
+    return null;
+  }
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    escrowId: row.escrow_id,
+    network: row.network,
+    outcome: row.outcome,
+    decisionNote: row.decision_note,
+    evidenceBundleHash: row.evidence_bundle_hash as `0x${string}`,
+    resolutionTxHash: row.resolution_tx_hash as `0x${string}`,
+    decidedByLockHash: row.decided_by_lock_hash as `0x${string}`,
+    createdAt: toIso(row.created_at) ?? new Date().toISOString(),
+  };
+}
+
+function disputeCaseFromRow(
+  row: DisputeCaseRow,
+  evidence: DisputeEvidenceItem[],
+  decision: ArbitratorDecision | null,
+): DisputeCaseRecord {
+  return {
+    id: row.id,
+    escrowId: row.escrow_id,
+    network: row.network,
+    disputeTxHash: row.dispute_tx_hash as `0x${string}`,
+    openedByLockHash: row.opened_by_lock_hash as `0x${string}`,
+    requestedOutcome: row.requested_outcome,
+    reason: row.reason,
+    status: row.status,
+    evidenceBundleHash: row.evidence_bundle_hash as `0x${string}`,
+    createdAt: toIso(row.created_at) ?? new Date().toISOString(),
+    updatedAt: toIso(row.updated_at) ?? new Date().toISOString(),
+    evidence,
+    decision,
   };
 }
 
@@ -368,12 +536,201 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
     };
   }
 
+  async createDisputeCase(input: CreateDisputeCaseInput): Promise<DisputeCaseRecord> {
+    await this.ensureMigrated();
+    const record = createDisputeCaseRecord(input);
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await this.upsertDisputeCase(client, record);
+      for (const item of record.evidence) {
+        await this.upsertEvidence(client, item);
+      }
+      await client.query("commit");
+      return record;
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async addDisputeEvidence(input: AddDisputeEvidenceInput): Promise<DisputeCaseRecord> {
+    await this.ensureMigrated();
+    const existing = await this.getDisputeCase(input.network, input.escrowId);
+    if (!existing) {
+      throw new Error(`Dispute case not found for escrow ${input.escrowId}`);
+    }
+    const updated = appendDisputeEvidence(existing, input);
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await this.upsertDisputeCase(client, updated);
+      for (const item of updated.evidence) {
+        await this.upsertEvidence(client, item);
+      }
+      await client.query("commit");
+      return updated;
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getDisputeCase(network: IndexedEscrowNetwork, escrowId: string): Promise<DisputeCaseRecord | null> {
+    await this.ensureMigrated();
+    const result = await this.pool.query<DisputeCaseRow>(
+      "select * from dispute_cases where network = $1 and escrow_id = $2 limit 1",
+      [network, escrowId],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    const evidence = await this.evidenceFor(row.network, row.id);
+    const decision = await this.decisionFor(row.network, row.id);
+    return disputeCaseFromRow(row, evidence, decision);
+  }
+
+  async saveArbitratorDecision(input: SaveArbitratorDecisionInput): Promise<DisputeCaseRecord> {
+    await this.ensureMigrated();
+    const existing = await this.getDisputeCase(input.network, input.escrowId);
+    if (!existing) {
+      throw new Error(`Dispute case not found for escrow ${input.escrowId}`);
+    }
+    const updated = applyArbitratorDecision(existing, input);
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await this.upsertDisputeCase(client, updated);
+      if (updated.decision) {
+        await this.upsertDecision(client, updated.decision);
+      }
+      await client.query("commit");
+      return updated;
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   private async eventsFor(network: IndexedEscrowNetwork, escrowId: string): Promise<IndexedEscrowEvent[]> {
     const result = await this.pool.query<PostgresEventRow>(
       "select * from escrow_events where network = $1 and escrow_id = $2 order by created_at asc",
       [network, escrowId],
     );
     return result.rows.map(eventFromRow);
+  }
+
+  private async evidenceFor(network: IndexedEscrowNetwork, caseId: string): Promise<DisputeEvidenceItem[]> {
+    const result = await this.pool.query<DisputeEvidenceRow>(
+      "select * from dispute_evidence where network = $1 and case_id = $2 order by created_at asc",
+      [network, caseId],
+    );
+    return result.rows.map(evidenceFromRow);
+  }
+
+  private async decisionFor(network: IndexedEscrowNetwork, caseId: string): Promise<ArbitratorDecision | null> {
+    const result = await this.pool.query<ArbitratorDecisionRow>(
+      "select * from arbitrator_decisions where network = $1 and case_id = $2 limit 1",
+      [network, caseId],
+    );
+    return decisionFromRow(result.rows[0]);
+  }
+
+  private async upsertDisputeCase(client: PoolClient, record: DisputeCaseRecord): Promise<void> {
+    await client.query(
+      `insert into dispute_cases (
+        id, escrow_id, network, dispute_tx_hash, opened_by_lock_hash, requested_outcome,
+        reason, status, evidence_bundle_hash, created_at, updated_at
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      on conflict (network, id) do update set
+        dispute_tx_hash = excluded.dispute_tx_hash,
+        opened_by_lock_hash = excluded.opened_by_lock_hash,
+        requested_outcome = excluded.requested_outcome,
+        reason = excluded.reason,
+        status = excluded.status,
+        evidence_bundle_hash = excluded.evidence_bundle_hash,
+        updated_at = excluded.updated_at`,
+      [
+        record.id,
+        record.escrowId,
+        record.network,
+        record.disputeTxHash,
+        record.openedByLockHash.toLowerCase(),
+        record.requestedOutcome,
+        record.reason,
+        record.status,
+        record.evidenceBundleHash,
+        record.createdAt,
+        record.updatedAt,
+      ],
+    );
+  }
+
+  private async upsertEvidence(client: PoolClient, item: DisputeEvidenceItem): Promise<void> {
+    await client.query(
+      `insert into dispute_evidence (
+        id, case_id, escrow_id, network, type, label, value, uri, mime_type,
+        size_bytes, content_hash, submitted_by_lock_hash, created_at
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      on conflict (network, id) do update set
+        label = excluded.label,
+        value = excluded.value,
+        uri = excluded.uri,
+        mime_type = excluded.mime_type,
+        size_bytes = excluded.size_bytes,
+        content_hash = excluded.content_hash,
+        submitted_by_lock_hash = excluded.submitted_by_lock_hash`,
+      [
+        item.id,
+        item.caseId,
+        item.escrowId,
+        item.network,
+        item.type,
+        item.label,
+        item.value,
+        item.uri,
+        item.mimeType,
+        item.sizeBytes,
+        item.contentHash,
+        item.submittedByLockHash.toLowerCase(),
+        item.createdAt,
+      ],
+    );
+  }
+
+  private async upsertDecision(client: PoolClient, decision: ArbitratorDecision): Promise<void> {
+    await client.query(
+      `insert into arbitrator_decisions (
+        id, case_id, escrow_id, network, outcome, decision_note, evidence_bundle_hash,
+        resolution_tx_hash, decided_by_lock_hash, created_at
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      on conflict (network, id) do update set
+        outcome = excluded.outcome,
+        decision_note = excluded.decision_note,
+        evidence_bundle_hash = excluded.evidence_bundle_hash,
+        resolution_tx_hash = excluded.resolution_tx_hash,
+        decided_by_lock_hash = excluded.decided_by_lock_hash`,
+      [
+        decision.id,
+        decision.caseId,
+        decision.escrowId,
+        decision.network,
+        decision.outcome,
+        decision.decisionNote,
+        decision.evidenceBundleHash,
+        decision.resolutionTxHash,
+        decision.decidedByLockHash.toLowerCase(),
+        decision.createdAt,
+      ],
+    );
   }
 
   private async upsertCheckpoint(

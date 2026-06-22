@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import * as ccc from "@ckb-ccc/ccc";
 import { decodeEscrowData } from "@ckb-escrow/sdk";
-import type { IndexedEscrowRecord } from "@ckb-escrow/indexer";
+import type { DisputeCaseRecord, DisputeRequestedOutcome, IndexedEscrowRecord } from "@ckb-escrow/indexer";
 import {
   CalendarClock,
   CircleHelp,
   ExternalLink,
+  FileText,
+  Link2,
+  MessageSquareWarning,
   RefreshCcw,
   Scale,
   ShieldCheck,
@@ -26,6 +29,7 @@ import {
   toIndexedProductEscrow,
   toLiveProductEscrow,
 } from "./contract";
+import { DraftEvidenceItem, hashEvidenceText, productDisputeClient } from "./dispute-api";
 import { productIndexerClient } from "./indexer-api";
 import { scriptHashFromStored, scriptLikeFromStored, storedScriptFromScriptLike } from "./registry";
 import { createEscrowInput } from "./utils";
@@ -96,6 +100,72 @@ function shortHash(value: string): string {
   return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-8)}` : value;
 }
 
+interface FileEvidenceDraft {
+  name: string;
+  size: number;
+  type: string;
+  lastModified: number;
+}
+
+function splitLines(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function buildEvidenceItems(input: {
+  statement: string;
+  links: string;
+  files: FileEvidenceDraft[];
+  submittedByLockHash: `0x${string}`;
+}): DraftEvidenceItem[] {
+  const evidence: DraftEvidenceItem[] = [];
+  const statement = input.statement.trim();
+  if (statement) {
+    evidence.push({
+      type: "statement",
+      label: "Participant statement",
+      value: statement,
+      uri: null,
+      mimeType: "text/plain",
+      sizeBytes: statement.length,
+      contentHash: hashEvidenceText(statement),
+      submittedByLockHash: input.submittedByLockHash,
+    });
+  }
+
+  for (const [index, uri] of splitLines(input.links).entries()) {
+    evidence.push({
+      type: "link",
+      label: `Evidence link ${index + 1}`,
+      value: uri,
+      uri,
+      mimeType: null,
+      sizeBytes: null,
+      contentHash: hashEvidenceText(uri),
+      submittedByLockHash: input.submittedByLockHash,
+    });
+  }
+
+  for (const file of input.files) {
+    const value = `${file.name}:${file.size}:${file.type}:${file.lastModified}`;
+    evidence.push({
+      type: "file",
+      label: file.name,
+      value,
+      uri: null,
+      mimeType: file.type || null,
+      sizeBytes: file.size,
+      contentHash: hashEvidenceText(value),
+      submittedByLockHash: input.submittedByLockHash,
+    });
+  }
+
+  return evidence;
+}
+
+
 export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const {
     network,
@@ -125,6 +195,18 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const [isFetchingIndexedDetail, setIsFetchingIndexedDetail] = useState(false);
   const [indexedDetailError, setIndexedDetailError] = useState<string | null>(null);
   const [timelineTimes, setTimelineTimes] = useState<Partial<Record<"Funded" | "Delivered" | "Disputed" | "Closed", string>>>({});
+  const [disputeCase, setDisputeCase] = useState<DisputeCaseRecord | null>(null);
+  const [isFetchingDisputeCase, setIsFetchingDisputeCase] = useState(false);
+  const [disputePanelOpen, setDisputePanelOpen] = useState(false);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeOutcome, setDisputeOutcome] = useState<DisputeRequestedOutcome>("buyer");
+  const [disputeStatement, setDisputeStatement] = useState("");
+  const [disputeLinks, setDisputeLinks] = useState("");
+  const [disputeFiles, setDisputeFiles] = useState<FileEvidenceDraft[]>([]);
+  const [responseStatement, setResponseStatement] = useState("");
+  const [responseLinks, setResponseLinks] = useState("");
+  const [responseFiles, setResponseFiles] = useState<FileEvidenceDraft[]>([]);
+  const [decisionNote, setDecisionNote] = useState("");
 
   useEffect(() => {
     if (!deploymentReady || isFetchingEscrows || hasFetchedEscrows) {
@@ -175,6 +257,21 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   useEffect(() => {
     setIndexedDetail(null);
     setIndexedDetailError(null);
+  }, [escrowId, network]);
+
+  useEffect(() => {
+    async function loadDisputeCase() {
+      try {
+        setIsFetchingDisputeCase(true);
+        setDisputeCase(await productDisputeClient.getDisputeCase({ network, escrowId }));
+      } catch {
+        setDisputeCase(null);
+      } finally {
+        setIsFetchingDisputeCase(false);
+      }
+    }
+
+    void loadDisputeCase();
   }, [escrowId, network]);
 
   useEffect(() => {
@@ -276,6 +373,86 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     void loadTimelineTimes();
   }, [client, indexedItem, liveItem]);
 
+  async function openDisputeWithEvidence() {
+    if (!service || !liveItem || !record || !activeLockHash) {
+      return;
+    }
+    if (!disputeReason.trim()) {
+      setStatus("Add a dispute reason before opening arbitration.");
+      return;
+    }
+    const evidence = buildEvidenceItems({
+      statement: disputeStatement,
+      links: disputeLinks,
+      files: disputeFiles,
+      submittedByLockHash: activeLockHash as `0x${string}`,
+    });
+    if (evidence.length === 0) {
+      setStatus("Add at least one statement, link, or file metadata item before opening a dispute.");
+      return;
+    }
+
+    try {
+      setBusyAction("Dispute");
+      setStatus("Submitting dispute transaction...");
+      const txHash = await service.sendDispute(createEscrowInput(liveItem, deployment));
+      setLastTxHash(txHash);
+      const saved = await productDisputeClient.createDisputeCase({
+        network,
+        escrowId,
+        disputeTxHash: txHash as `0x${string}`,
+        openedByLockHash: activeLockHash as `0x${string}`,
+        requestedOutcome: disputeOutcome,
+        reason: disputeReason,
+        evidence,
+      });
+      setDisputeCase(saved);
+      setDisputePanelOpen(false);
+      setStatus("Dispute submitted with evidence packet. Waiting for indexer confirmation.");
+      await refreshEscrows();
+    } catch (error) {
+      const { detail, hint } = formatEscrowError(error);
+      setStatus(hint ? `${detail} ${hint}` : detail);
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function submitEvidenceResponse() {
+    if (!activeLockHash) {
+      setStatus("Connect a participant wallet before submitting evidence.");
+      return;
+    }
+    const evidence = buildEvidenceItems({
+      statement: responseStatement,
+      links: responseLinks,
+      files: responseFiles,
+      submittedByLockHash: activeLockHash as `0x${string}`,
+    });
+    if (evidence.length === 0) {
+      setStatus("Add a response statement, link, or file metadata item first.");
+      return;
+    }
+    try {
+      setBusyAction("Dispute");
+      const saved = await productDisputeClient.addEvidence({
+        network,
+        escrowId,
+        submittedByLockHash: activeLockHash as `0x${string}`,
+        evidence: evidence.map(({ submittedByLockHash: _submittedByLockHash, ...item }) => item),
+      });
+      setDisputeCase(saved);
+      setResponseStatement("");
+      setResponseLinks("");
+      setResponseFiles([]);
+      setStatus("Evidence response saved to the dispute case.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function runAction(action: ProductActionView["action"]) {
     if (!service || !liveItem || !record) {
       return;
@@ -316,6 +493,12 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           });
           break;
         case "ResolveToBuyer":
+          if (!disputeCase) {
+            throw new Error("Create or load the dispute evidence case before resolving in the product UI. Use Studio for raw protocol fallback.");
+          }
+          if (!decisionNote.trim()) {
+            throw new Error("Add an arbitrator decision note before resolving this dispute.");
+          }
           if (!buyerStoredScript) {
             throw new Error("Resolve to buyer is unavailable on this device because the buyer payout script is missing.");
           }
@@ -323,8 +506,22 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
             escrowInput: cell,
             recipientLock: scriptLikeFromStored(buyerStoredScript),
           });
+          await productDisputeClient.saveDecision({
+            network,
+            escrowId,
+            outcome: "buyer",
+            decisionNote,
+            resolutionTxHash: txHash as `0x${string}`,
+            decidedByLockHash: activeLockHash as `0x${string}`,
+          }).then(setDisputeCase);
           break;
         case "ResolveToSeller":
+          if (!disputeCase) {
+            throw new Error("Create or load the dispute evidence case before resolving in the product UI. Use Studio for raw protocol fallback.");
+          }
+          if (!decisionNote.trim()) {
+            throw new Error("Add an arbitrator decision note before resolving this dispute.");
+          }
           if (!sellerStoredScript) {
             throw new Error("Resolve to seller is unavailable on this device because the seller payout script is missing.");
           }
@@ -332,6 +529,14 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
             escrowInput: cell,
             recipientLock: scriptLikeFromStored(sellerStoredScript),
           });
+          await productDisputeClient.saveDecision({
+            network,
+            escrowId,
+            outcome: "seller",
+            decisionNote,
+            resolutionTxHash: txHash as `0x${string}`,
+            decidedByLockHash: activeLockHash as `0x${string}`,
+          }).then(setDisputeCase);
           break;
         default:
           throw new Error(`${action} still requires settlement support this week.`);
@@ -544,6 +749,98 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
 
           <Card>
             <CardHeader>
+              <CardTitle className="flex items-center gap-2"><MessageSquareWarning className="h-5 w-5 text-primary" />Dispute evidence</CardTitle>
+              <CardDescription>Evidence stays off-chain for v1, but every item is hashed and linked to the escrow dispute case.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {isFetchingDisputeCase ? (
+                <p className="text-sm text-muted-foreground">Checking dispute case...</p>
+              ) : disputeCase ? (
+                <div className="space-y-4">
+                  <div className="rounded-[1.25rem] border border-primary/20 bg-primary/6 p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={disputeCase.status === "resolved" ? "success" : "destructive"}>{disputeCase.status}</Badge>
+                      <Badge variant="outline">Requested: {disputeCase.requestedOutcome}</Badge>
+                    </div>
+                    <p className="mt-3 font-medium text-foreground">{disputeCase.reason}</p>
+                    <p className="mt-2 break-all text-xs text-muted-foreground">Bundle hash: {disputeCase.evidenceBundleHash}</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {disputeCase.evidence.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No evidence has been submitted yet.</p>
+                    ) : (
+                      disputeCase.evidence.map((item) => (
+                        <div key={item.id} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="secondary">{item.type}</Badge>
+                            <span className="text-sm font-medium text-foreground">{item.label}</span>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.value}</p>
+                          {item.uri ? (
+                            <Link href={item.uri} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-primary">
+                              <Link2 className="h-4 w-4" /> Open evidence link
+                            </Link>
+                          ) : null}
+                          <p className="mt-2 break-all text-xs text-muted-foreground">Hash: {item.contentHash}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">Submitted by {shortHash(item.submittedByLockHash)}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {record.state === "Disputed" && (record.viewerRole === "buyer" || record.viewerRole === "seller") ? (
+                    <div className="rounded-[1.25rem] border border-dashed border-border bg-secondary/45 p-4">
+                      <p className="font-medium text-foreground">Submit a response</p>
+                      <textarea value={responseStatement} onChange={(event) => setResponseStatement(event.target.value)} placeholder="Add your response for the arbitrator" className="mt-3 min-h-28 w-full rounded-2xl border border-border bg-white/80 px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/10" />
+                      <textarea value={responseLinks} onChange={(event) => setResponseLinks(event.target.value)} placeholder="Evidence links, one per line" className="mt-3 min-h-20 w-full rounded-2xl border border-border bg-white/80 px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/10" />
+                      <input type="file" multiple className="mt-3 block w-full text-sm text-muted-foreground" onChange={(event) => setResponseFiles(Array.from(event.target.files ?? []).map((file) => ({ name: file.name, size: file.size, type: file.type, lastModified: file.lastModified })))} />
+                      <Button className="mt-3" disabled={busyAction !== null} onClick={() => void submitEvidenceResponse()}>Save response evidence</Button>
+                    </div>
+                  ) : null}
+
+                  {record.state === "Disputed" && record.viewerRole === "arbitrator" ? (
+                    <div className="rounded-[1.25rem] border border-primary/20 bg-white/80 p-4">
+                      <p className="font-medium text-foreground">Arbitrator decision note</p>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">The product blocks direct resolution until this note is written. Studio remains available for raw protocol debugging.</p>
+                      <textarea value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} placeholder="Explain the decision before resolving to buyer or seller" className="mt-3 min-h-28 w-full rounded-2xl border border-border bg-white/80 px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/10" />
+                      {disputeCase.decision ? <p className="mt-3 text-sm text-muted-foreground">Decision already recorded: {disputeCase.decision.decisionNote}</p> : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : disputePanelOpen ? (
+                <div className="rounded-[1.25rem] border border-primary/20 bg-primary/6 p-4">
+                  <p className="font-medium text-foreground">Open an arbitration case</p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <label className="text-sm font-medium text-muted-foreground">Requested outcome
+                      <select value={disputeOutcome} onChange={(event) => setDisputeOutcome(event.target.value as DisputeRequestedOutcome)} className="mt-2 h-11 w-full rounded-full border border-border bg-white/80 px-4 text-sm text-foreground outline-none focus:border-primary focus:ring-4 focus:ring-primary/10">
+                        <option value="buyer">Refund buyer</option>
+                        <option value="seller">Pay seller</option>
+                      </select>
+                    </label>
+                    <label className="text-sm font-medium text-muted-foreground">Reason
+                      <input value={disputeReason} onChange={(event) => setDisputeReason(event.target.value)} placeholder="What went wrong?" className="mt-2 h-11 w-full rounded-full border border-border bg-white/80 px-4 text-sm text-foreground outline-none focus:border-primary focus:ring-4 focus:ring-primary/10" />
+                    </label>
+                  </div>
+                  <textarea value={disputeStatement} onChange={(event) => setDisputeStatement(event.target.value)} placeholder="Write your evidence statement" className="mt-3 min-h-28 w-full rounded-2xl border border-border bg-white/80 px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/10" />
+                  <textarea value={disputeLinks} onChange={(event) => setDisputeLinks(event.target.value)} placeholder="Evidence links, one per line" className="mt-3 min-h-20 w-full rounded-2xl border border-border bg-white/80 px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/10" />
+                  <input type="file" multiple className="mt-3 block w-full text-sm text-muted-foreground" onChange={(event) => setDisputeFiles(Array.from(event.target.files ?? []).map((file) => ({ name: file.name, size: file.size, type: file.type, lastModified: file.lastModified })))} />
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <Button disabled={busyAction !== null} onClick={() => void openDisputeWithEvidence()}>{busyAction === "Dispute" ? "Submitting..." : "Submit dispute with evidence"}</Button>
+                    <Button variant="outline" onClick={() => setDisputePanelOpen(false)}>Cancel</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-[1.25rem] border border-border bg-white/75 p-4 text-sm text-muted-foreground">
+                  <FileText className="mb-3 h-5 w-5 text-primary" />
+                  No dispute case is recorded for this escrow yet. If a participant opens a dispute, the product will collect the reason and evidence before submitting the on-chain state change.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Available actions</CardTitle>
               <CardDescription>
                 Direct actions come first. Advanced settlement paths stay visible with clear limitations instead of failing silently.
@@ -581,7 +878,13 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                       <div className="flex flex-wrap gap-3">
                         <Button
                           disabled={!inProduct || busyAction !== null || !action.enabled}
-                          onClick={() => void runAction(action.action)}
+                          onClick={() => {
+                            if (action.action === "Dispute") {
+                              setDisputePanelOpen(true);
+                              return;
+                            }
+                            void runAction(action.action);
+                          }}
                         >
                           {busyAction === action.action ? "Submitting..." : action.label}
                         </Button>

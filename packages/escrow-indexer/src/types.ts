@@ -14,6 +14,10 @@ export type IndexedEscrowEventType =
   | "ResolvedToBuyer"
   | "ResolvedToSeller";
 
+export type DisputeRequestedOutcome = "buyer" | "seller";
+export type DisputeCaseStatus = "open" | "resolved";
+export type DisputeEvidenceType = "statement" | "link" | "file";
+
 export interface IndexedOutPoint {
   txHash: Hex;
   index: string;
@@ -56,6 +60,51 @@ export interface IndexedEscrowRecord {
   events: IndexedEscrowEvent[];
 }
 
+export interface DisputeEvidenceItem {
+  id: string;
+  caseId: string;
+  escrowId: string;
+  network: IndexedEscrowNetwork;
+  type: DisputeEvidenceType;
+  label: string;
+  value: string;
+  uri: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  contentHash: Hex;
+  submittedByLockHash: Hex;
+  createdAt: string;
+}
+
+export interface ArbitratorDecision {
+  id: string;
+  caseId: string;
+  escrowId: string;
+  network: IndexedEscrowNetwork;
+  outcome: DisputeRequestedOutcome;
+  decisionNote: string;
+  evidenceBundleHash: Hex;
+  resolutionTxHash: Hex;
+  decidedByLockHash: Hex;
+  createdAt: string;
+}
+
+export interface DisputeCaseRecord {
+  id: string;
+  escrowId: string;
+  network: IndexedEscrowNetwork;
+  disputeTxHash: Hex;
+  openedByLockHash: Hex;
+  requestedOutcome: DisputeRequestedOutcome;
+  reason: string;
+  status: DisputeCaseStatus;
+  evidenceBundleHash: Hex;
+  createdAt: string;
+  updatedAt: string;
+  evidence: DisputeEvidenceItem[];
+  decision: ArbitratorDecision | null;
+}
+
 export interface IndexerStatus {
   network: IndexedEscrowNetwork;
   ready: boolean;
@@ -75,11 +124,43 @@ export interface IndexedEscrowDetailQuery {
   escrowId: string;
 }
 
+export interface CreateDisputeCaseInput {
+  escrowId: string;
+  network: IndexedEscrowNetwork;
+  disputeTxHash: Hex;
+  openedByLockHash: Hex;
+  requestedOutcome: DisputeRequestedOutcome;
+  reason: string;
+  evidence?: Array<Omit<DisputeEvidenceItem, "id" | "caseId" | "escrowId" | "network" | "createdAt"> & { createdAt?: string }>;
+  createdAt?: string;
+}
+
+export interface AddDisputeEvidenceInput {
+  escrowId: string;
+  network: IndexedEscrowNetwork;
+  submittedByLockHash: Hex;
+  evidence: Array<Omit<DisputeEvidenceItem, "id" | "caseId" | "escrowId" | "network" | "submittedByLockHash" | "createdAt"> & { createdAt?: string }>;
+}
+
+export interface SaveArbitratorDecisionInput {
+  escrowId: string;
+  network: IndexedEscrowNetwork;
+  outcome: DisputeRequestedOutcome;
+  decisionNote: string;
+  resolutionTxHash: Hex;
+  decidedByLockHash: Hex;
+  createdAt?: string;
+}
+
 export interface EscrowIndexerStorage {
   upsertEscrow(record: IndexedEscrowRecord): Promise<void>;
   getEscrow(query: IndexedEscrowDetailQuery): Promise<IndexedEscrowRecord | null>;
   listEscrows(query: IndexedEscrowListQuery): Promise<IndexedEscrowRecord[]>;
   getStatus(network: IndexedEscrowNetwork): Promise<IndexerStatus>;
+  createDisputeCase(input: CreateDisputeCaseInput): Promise<DisputeCaseRecord>;
+  addDisputeEvidence(input: AddDisputeEvidenceInput): Promise<DisputeCaseRecord>;
+  getDisputeCase(network: IndexedEscrowNetwork, escrowId: string): Promise<DisputeCaseRecord | null>;
+  saveArbitratorDecision(input: SaveArbitratorDecisionInput): Promise<DisputeCaseRecord>;
 }
 
 export interface CreateIndexedEscrowInput {
