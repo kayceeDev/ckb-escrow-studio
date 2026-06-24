@@ -44,6 +44,8 @@ export interface ProductEscrowRecord {
     status: "done" | "current" | "pending";
   }>;
   source: "seed" | "live" | "indexed";
+  stableId?: string;
+  currentId?: string | null;
 }
 
 export function makeLiveEscrowId(txHash: string, index: string): string {
@@ -150,6 +152,18 @@ export function filterEscrowsByHistoryBucket(
 }
 
 
+function mergeKey(record: ProductEscrowRecord): string {
+  return record.stableId ?? record.currentId ?? record.id;
+}
+
+function liveRecordMatchesIndexed(live: ProductEscrowRecord, indexed: ProductEscrowRecord): boolean {
+  if (indexed.currentId && live.currentId && indexed.currentId === live.currentId) {
+    return true;
+  }
+
+  return Boolean(live.stableId && indexed.stableId && live.stableId === indexed.stableId);
+}
+
 export function mergeProductEscrowRecords(
   indexedRecords: ProductEscrowRecord[],
   liveRecords: ProductEscrowRecord[],
@@ -157,10 +171,18 @@ export function mergeProductEscrowRecords(
   const merged = new Map<string, ProductEscrowRecord>();
 
   for (const record of indexedRecords) {
-    merged.set(record.id, record);
+    merged.set(mergeKey(record), record);
   }
-  for (const record of liveRecords) {
-    merged.set(record.id, record);
+
+  for (const live of liveRecords) {
+    const matchingIndexed = Array.from(merged.entries()).find(([, indexed]) => liveRecordMatchesIndexed(live, indexed));
+    if (matchingIndexed) {
+      const stableId = matchingIndexed[1].stableId ?? live.stableId;
+      merged.delete(matchingIndexed[0]);
+      merged.set(matchingIndexed[0], stableId ? { ...live, stableId } : live);
+    } else {
+      merged.set(mergeKey(live), live);
+    }
   }
 
   return Array.from(merged.values());
@@ -442,6 +464,8 @@ export function closeEscrowRecordForAction(
     guidance: guidanceForEscrow({ state: terminalState, deadlineMs: 0n }, record.viewerRole),
     timeline: timelineForState(terminalState),
     source: "indexed",
+    stableId: record.stableId ?? record.id,
+    currentId: null,
   };
 }
 
@@ -477,6 +501,8 @@ export function toSeedProductEscrow(
     ),
     timeline: timelineForState(escrow.state),
     source: "seed",
+    stableId: escrow.id,
+    currentId: escrow.id,
   };
 }
 
@@ -507,6 +533,7 @@ export function toLiveProductEscrow(
     guidance: guidanceForEscrow(escrow.decoded, viewerRole, Date.now(), chainTipTimestampMs),
     timeline: timelineForState(escrow.decoded.state),
     source: "live",
+    currentId: makeLiveEscrowId(escrow.txHash, escrow.index),
   };
 }
 
@@ -547,5 +574,7 @@ export function toIndexedProductEscrow(
     guidance: guidanceForEscrow(decoded, viewerRole, Date.now(), chainTipTimestampMs),
     timeline: timelineForState(escrow.state),
     source: "indexed",
+    stableId: escrow.id,
+    currentId: escrow.current ? makeLiveEscrowId(escrow.current.txHash, escrow.current.index) : null,
   };
 }

@@ -19,7 +19,7 @@ export function SectionHeader({ title, body }: { title: string; body: string }) 
 }
 
 function escrowRouteId(escrow: ProductEscrowRecord): string {
-  return escrow.source === "live" ? escrow.id.split(":")[0] ?? escrow.id : escrow.id;
+  return escrow.stableId ?? (escrow.source === "live" ? escrow.id.split(":")[0] ?? escrow.id : escrow.id);
 }
 
 function StateBadge({ state }: { state: ProductEscrowRecord["state"] }) {

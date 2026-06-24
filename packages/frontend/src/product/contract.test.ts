@@ -374,6 +374,38 @@ describe("escrow history grouping", () => {
     ]);
   });
 
+
+
+  it("deduplicates live current cell against indexed origin record", () => {
+    const indexed = {
+      ...record("Funded", "buyer"),
+      id: "origin:0",
+      stableId: "origin:0",
+      currentId: "current:1",
+      source: "indexed" as const,
+    };
+    const live = {
+      ...record("Delivered", "buyer"),
+      id: "current:1",
+      currentId: "current:1",
+      source: "live" as const,
+    };
+
+    expect(mergeProductEscrowRecords([indexed], [live])).toEqual([{ ...live, stableId: "origin:0" }]);
+  });
+
+  it("keeps terminal indexed record when live cell is gone", () => {
+    const terminal = {
+      ...record("Cancelled", "buyer"),
+      id: "origin:0",
+      stableId: "origin:0",
+      currentId: null,
+      source: "indexed" as const,
+    };
+
+    expect(mergeProductEscrowRecords([terminal], [])).toEqual([terminal]);
+  });
+
   it("deduplicates live and indexed records by id while preferring live records", () => {
     const indexed = { ...record("Funded", "buyer"), id: "same-escrow", title: "Indexed copy", source: "indexed" as const };
     const live = { ...record("Delivered", "buyer"), id: "same-escrow", title: "Live copy", source: "live" as const };

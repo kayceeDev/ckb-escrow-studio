@@ -222,7 +222,7 @@ export function CreateEscrowProduct() {
 
       await saveParticipantScripts();
       const refreshedEscrows = await refreshEscrows();
-      const createdEscrow = refreshedEscrows.find((escrow) => escrow.txHash === txHash);
+      const createdEscrow = refreshedEscrows.live.find((escrow) => escrow.txHash === txHash);
       const nextEscrowId = createdEscrow ? createdEscrow.txHash : txHash;
       setLastTxHash(txHash);
       setLastEscrowId(nextEscrowId);

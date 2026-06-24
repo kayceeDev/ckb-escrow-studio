@@ -228,7 +228,7 @@ export function useProductWorkspace() {
       setEscrows([]);
       setHasFetchedEscrows(false);
       setEscrowFetchError(null);
-      return [] as EscrowListItem[];
+      return { live: [] as EscrowListItem[], indexed: [] as IndexedEscrowRecord[] };
     }
 
     try {
@@ -247,13 +247,13 @@ export function useProductWorkspace() {
       setIndexedEscrows(indexed);
       setHasFetchedEscrows(true);
       setStatus(`Fetched ${fetched.length} live cell(s) and ${indexed.length} indexed history record(s).`);
-      return fetched;
+      return { live: fetched, indexed };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setEscrowFetchError(message);
       setHasFetchedEscrows(true);
       setStatus(`Escrow fetch failed: ${message}`);
-      return [] as EscrowListItem[];
+      return { live: [] as EscrowListItem[], indexed: [] as IndexedEscrowRecord[] };
     } finally {
       setIsFetchingEscrows(false);
     }

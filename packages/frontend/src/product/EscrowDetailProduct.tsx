@@ -26,11 +26,13 @@ import {
   ProductActionView,
   ProductEscrowRecord,
   makeLiveEscrowId,
+  mergeProductEscrowRecords,
   toIndexedProductEscrow,
   toLiveProductEscrow,
 } from "./contract";
 import { DraftEvidenceItem, hashEvidenceText, productDisputeClient } from "./dispute-api";
 import { productIndexerClient } from "./indexer-api";
+import { findUpdatedEscrowRecord, pollForEscrowUpdate } from "./polling";
 import { scriptHashFromStored, scriptLikeFromStored, storedScriptFromScriptLike } from "./registry";
 import { createEscrowInput } from "./utils";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
@@ -409,7 +411,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       setDisputeCase(saved);
       setDisputePanelOpen(false);
       setStatus("Dispute submitted with evidence packet. Waiting for indexer confirmation.");
-      await refreshEscrows();
+      await pollAfterAction({ txHash, previousRecord: record, expectedTerminal: false });
     } catch (error) {
       const { detail, hint } = formatEscrowError(error);
       setStatus(hint ? `${detail} ${hint}` : detail);
@@ -451,6 +453,32 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     } finally {
       setBusyAction(null);
     }
+  }
+
+  async function pollAfterAction(input: {
+    txHash: string;
+    previousRecord: ProductEscrowRecord;
+    expectedTerminal: boolean;
+  }) {
+    setStatus("Transaction submitted, waiting for CKB/indexer confirmation...");
+    const result = await pollForEscrowUpdate({
+      previousRecord: input.previousRecord,
+      submittedTxHash: input.txHash,
+      expectedTerminal: input.expectedTerminal,
+      refresh: async () => {
+        const refreshed = await refreshEscrows();
+        const liveRecords = refreshed.live.map((escrow) => toLiveProductEscrow(escrow, activeLockHash, chainTipTimestampMs));
+        const indexedRecords = refreshed.indexed.map((escrow) => toIndexedProductEscrow(escrow, activeLockHash, chainTipTimestampMs));
+        return { records: mergeProductEscrowRecords(indexedRecords, liveRecords) };
+      },
+    });
+
+    if (result.status === "updated") {
+      setStatus(`Escrow updated to ${result.record.state}.`);
+      return;
+    }
+
+    setStatus("Still waiting for the new escrow state. You can refresh manually.");
   }
 
   async function runAction(action: ProductActionView["action"]) {
@@ -549,7 +577,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           ? `${action} submitted. Waiting for the escrow indexer to recover the closed history record.`
           : `${action} submitted.`,
       );
-      await refreshEscrows();
+      await pollAfterAction({ txHash, previousRecord: record, expectedTerminal: isTerminalAction });
     } catch (error) {
       const { detail, hint } = formatEscrowError(error);
       setStatus(hint ? `${detail} ${hint}` : detail);
