@@ -16,7 +16,7 @@ import {
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui";
 import { createExplorerTxUrl } from "../studio";
 import { buyerHighlights } from "./mock-data";
-import { toLiveProductEscrow } from "./contract";
+import { filterParticipantEscrows, mergeProductEscrowRecords, toIndexedProductEscrow, toLiveProductEscrow } from "./contract";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 import { EscrowGrid, SectionHeader } from "./EscrowCollectionSections";
 
@@ -26,6 +26,7 @@ export function ProductHome() {
     walletState,
     deploymentReady,
     escrows,
+    indexedEscrows,
     isFetchingEscrows,
     hasFetchedEscrows,
     escrowFetchError,
@@ -36,11 +37,13 @@ export function ProductHome() {
   } = useProductWorkspaceContext();
 
   const liveRecords = escrows.map((escrow) => toLiveProductEscrow(escrow, activeLockHash, chainTipTimestampMs));
-  const actorEscrows = liveRecords.filter((escrow) => escrow.viewerRole !== "viewer");
+  const indexedRecords = indexedEscrows.map((escrow) => toIndexedProductEscrow(escrow, activeLockHash, chainTipTimestampMs));
+  const actorEscrows = filterParticipantEscrows(mergeProductEscrowRecords(indexedRecords, liveRecords));
+  const liveActorEscrows = filterParticipantEscrows(liveRecords);
   const buyerEscrows = actorEscrows.filter((escrow) => escrow.viewerRole === "buyer");
   const sellerEscrows = actorEscrows.filter((escrow) => escrow.viewerRole === "seller");
   const arbitratorEscrows = actorEscrows.filter((escrow) => escrow.viewerRole === "arbitrator");
-  const needsAction = actorEscrows.filter((escrow) => escrow.actions.some((action) => action.enabled));
+  const needsAction = liveActorEscrows.filter((escrow) => escrow.actions.some((action) => action.enabled));
   const needsActionIds = new Set(needsAction.map((escrow) => escrow.id));
   const quietBuyerEscrows = buyerEscrows.filter((escrow) => !needsActionIds.has(escrow.id));
   const quietSellerEscrows = sellerEscrows.filter((escrow) => !needsActionIds.has(escrow.id));
@@ -154,9 +157,9 @@ export function ProductHome() {
       <section className="mb-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { title: "Needs your action", value: String(needsAction.length), body: "Escrows where your connected role can act right now." },
-          { title: "As buyer", value: String(buyerEscrows.length), body: "Escrows this wallet funded or can settle as the buyer." },
-          { title: "As seller", value: String(sellerEscrows.length), body: "Escrows where this wallet is expected to deliver or defend fulfillment." },
-          { title: "As arbitrator", value: String(arbitratorEscrows.length), body: "Disputes assigned to this wallet for final resolution." },
+          { title: "As buyer", value: String(buyerEscrows.length), body: "Active and past escrows where this wallet is the buyer." },
+          { title: "As seller", value: String(sellerEscrows.length), body: "Active and past escrows where this wallet is the seller." },
+          { title: "As arbitrator", value: String(arbitratorEscrows.length), body: "Active and past disputes assigned to this arbitrator wallet." },
         ].map((item) => (
           <Card key={item.title}>
             <CardContent className="space-y-2 p-6">

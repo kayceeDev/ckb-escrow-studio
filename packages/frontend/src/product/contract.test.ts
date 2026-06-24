@@ -8,6 +8,7 @@ import {
   getViewerRole,
   guidanceForEscrow,
   closeEscrowRecordForAction,
+  mergeProductEscrowRecords,
   primaryActionLabel,
   toIndexedProductEscrow,
   type ProductEscrowRecord,
@@ -341,4 +342,43 @@ describe("escrow history grouping", () => {
   it("uses receipt copy when terminal escrows have no direct action", () => {
     expect(primaryActionLabel(record("Completed", "buyer"))).toBe("View receipt");
   });
+
+  it("merges live and indexed records for homepage role statistics", () => {
+    const live = record("Delivered", "buyer");
+    const indexedBuyer = { ...record("Completed", "buyer"), id: "indexed-buyer", source: "indexed" as const };
+    const indexedSeller = { ...record("Cancelled", "seller"), id: "indexed-seller", source: "indexed" as const };
+    const indexedArbitrator = { ...record("Resolved", "arbitrator"), id: "indexed-arbitrator", source: "indexed" as const };
+    const viewer = { ...record("Completed", "viewer"), id: "viewer-history", source: "indexed" as const };
+
+    const statsRecords = filterParticipantEscrows(
+      mergeProductEscrowRecords([indexedBuyer, indexedSeller, indexedArbitrator, viewer], [live]),
+    );
+
+    expect(statsRecords.filter((item) => item.viewerRole === "buyer")).toHaveLength(2);
+    expect(statsRecords.filter((item) => item.viewerRole === "seller")).toHaveLength(1);
+    expect(statsRecords.filter((item) => item.viewerRole === "arbitrator")).toHaveLength(1);
+    expect(statsRecords.some((item) => item.viewerRole === "viewer")).toBe(false);
+  });
+
+  it("keeps needs-action statistics limited to actionable active escrows", () => {
+    const actionableLive = {
+      ...record("Delivered", "buyer"),
+      id: "live-action",
+      actions: [{ action: "Complete" as const, label: "Release funds", description: "release", enabled: true, mode: "direct" as const }],
+    };
+    const terminalHistory = { ...record("Completed", "buyer"), id: "closed-history", source: "indexed" as const };
+    const merged = mergeProductEscrowRecords([terminalHistory], [actionableLive]);
+
+    expect(merged.filter((item) => item.actions.some((action) => action.enabled)).map((item) => item.id)).toEqual([
+      "live-action",
+    ]);
+  });
+
+  it("deduplicates live and indexed records by id while preferring live records", () => {
+    const indexed = { ...record("Funded", "buyer"), id: "same-escrow", title: "Indexed copy", source: "indexed" as const };
+    const live = { ...record("Delivered", "buyer"), id: "same-escrow", title: "Live copy", source: "live" as const };
+
+    expect(mergeProductEscrowRecords([indexed], [live])).toEqual([live]);
+  });
+
 });

@@ -8,6 +8,7 @@ import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitl
 import {
   filterEscrowsByHistoryBucket,
   filterParticipantEscrows,
+  mergeProductEscrowRecords,
   toIndexedProductEscrow,
   toLiveProductEscrow,
   type ProductEscrowHistoryBucket,
@@ -53,19 +54,17 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
     [activeLockHash, chainTipTimestampMs, indexedEscrows],
   );
   const participantEscrows = useMemo(
-    () => filterParticipantEscrows([...indexedRecords, ...liveRecords]),
+    () => filterParticipantEscrows(mergeProductEscrowRecords(indexedRecords, liveRecords)),
     [indexedRecords, liveRecords],
   );
   const activeEscrows = useMemo(
     () => {
-      const merged = filterEscrowsByHistoryBucket(participantEscrows, "active");
-      return Array.from(new Map(merged.map((escrow) => [escrow.id, escrow])).values());
+      return filterEscrowsByHistoryBucket(participantEscrows, "active");
     },
     [participantEscrows],
   );
   const pastEscrows = useMemo(() => {
-    const merged = filterEscrowsByHistoryBucket(participantEscrows, "past");
-    return Array.from(new Map(merged.map((escrow) => [escrow.id, escrow])).values());
+    return filterEscrowsByHistoryBucket(participantEscrows, "past");
   }, [participantEscrows]);
   const visibleRecords = activeTab === "active" ? activeEscrows : pastEscrows;
 

@@ -149,6 +149,23 @@ export function filterEscrowsByHistoryBucket(
   return records.filter((record) => getEscrowHistoryBucket(record.state) === bucket);
 }
 
+
+export function mergeProductEscrowRecords(
+  indexedRecords: ProductEscrowRecord[],
+  liveRecords: ProductEscrowRecord[],
+): ProductEscrowRecord[] {
+  const merged = new Map<string, ProductEscrowRecord>();
+
+  for (const record of indexedRecords) {
+    merged.set(record.id, record);
+  }
+  for (const record of liveRecords) {
+    merged.set(record.id, record);
+  }
+
+  return Array.from(merged.values());
+}
+
 export function primaryActionLabel(record: Pick<ProductEscrowRecord, "actions" | "state">): string {
   const enabledAction = record.actions.find((action) => action.enabled);
   if (enabledAction) {
