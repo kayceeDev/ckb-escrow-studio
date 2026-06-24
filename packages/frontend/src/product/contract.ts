@@ -506,6 +506,32 @@ export function toSeedProductEscrow(
   };
 }
 
+
+export function findLiveEscrowForRoute(
+  liveEscrows: EscrowListItem[],
+  routeEscrowId: string,
+  indexedEscrows: IndexedEscrowRecord[] = [],
+): EscrowListItem | null {
+  const exactMatch = liveEscrows.find((escrow) => makeLiveEscrowId(escrow.txHash, escrow.index) === routeEscrowId);
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  const indexedMatch = indexedEscrows.find((escrow) => escrow.id === routeEscrowId);
+  if (indexedMatch?.current) {
+    const currentMatch = liveEscrows.find(
+      (escrow) => escrow.txHash === indexedMatch.current?.txHash && escrow.index === indexedMatch.current.index,
+    );
+    if (currentMatch) {
+      return currentMatch;
+    }
+  }
+
+  const [routeTxHash] = routeEscrowId.split(":");
+  const txHashMatches = liveEscrows.filter((escrow) => escrow.txHash === routeTxHash);
+  return txHashMatches.length === 1 ? txHashMatches[0] ?? null : null;
+}
+
 export function toLiveProductEscrow(
   escrow: EscrowListItem,
   connectedLockHash?: string | null,

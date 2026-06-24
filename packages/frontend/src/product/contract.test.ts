@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   filterEscrowsByHistoryBucket,
   filterParticipantEscrows,
+  findLiveEscrowForRoute,
   getActionViews,
   getEscrowHistoryBucket,
   getViewerRole,
@@ -287,6 +288,51 @@ describe("escrow history grouping", () => {
     expect(filterEscrowsByHistoryBucket([indexedRecord], "past").map((item) => item.title)).toEqual([
       "Recovered from indexer",
     ]);
+  });
+
+
+  it("reproduces disabled detail actions when stable indexed route has a current live cell", () => {
+    const originId = "0xorigin:0";
+    const currentTxHash = `0x${"12".repeat(32)}`;
+    const indexed: IndexedEscrowRecord = {
+      id: originId,
+      network: "testnet",
+      origin: { txHash: "0xorigin" as `0x${string}`, index: "0" },
+      current: { txHash: currentTxHash as `0x${string}`, index: "0" },
+      latestTxHash: currentTxHash as `0x${string}`,
+      settlementTxHash: null,
+      state: "Delivered",
+      buyerLockHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+      sellerLockHash: "0x2222222222222222222222222222222222222222222222222222222222222222",
+      arbitratorLockHash: "0x3333333333333333333333333333333333333333333333333333333333333333",
+      amountShannons: "100000000",
+      deadlineMs: "1790000000000",
+      description: "Delivered escrow",
+      dataHex: "0x00",
+      createdAt: "2026-04-01T00:00:00.000Z",
+      updatedAt: "2026-04-02T00:00:00.000Z",
+      closedAt: null,
+      events: [],
+    };
+    const live = {
+      txHash: currentTxHash,
+      index: "0",
+      capacity: "100000000",
+      lock: { codeHash: "0x", hashType: "type" as const, args: "0x" },
+      decoded: {
+        buyerLockHash: indexed.buyerLockHash,
+        sellerLockHash: indexed.sellerLockHash,
+        arbitratorLockHash: indexed.arbitratorLockHash,
+        amountShannons: 100000000n,
+        deadlineMs: 1790000000000n,
+        state: "Delivered" as const,
+        description: new TextEncoder().encode("Delivered escrow"),
+        descriptionText: "Delivered escrow",
+        dataHex: "0x00" as const,
+      },
+    };
+
+    expect(findLiveEscrowForRoute([live], originId, [indexed])?.txHash).toBe(currentTxHash);
   });
 
   it("can render indexed past escrow details when the live cell is gone", () => {

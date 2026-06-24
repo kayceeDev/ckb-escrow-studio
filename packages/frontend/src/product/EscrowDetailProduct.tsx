@@ -25,7 +25,7 @@ import { createExplorerTxUrl } from "../studio";
 import {
   ProductActionView,
   ProductEscrowRecord,
-  makeLiveEscrowId,
+  findLiveEscrowForRoute,
   mergeProductEscrowRecords,
   toIndexedProductEscrow,
   toLiveProductEscrow,
@@ -218,20 +218,10 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     void refreshEscrows();
   }, [deploymentReady, hasFetchedEscrows, isFetchingEscrows, refreshEscrows]);
 
-  const [routeTxHash] = escrowId.split(":");
-  const liveItem = useMemo(() => {
-    const exactMatch = escrows.find((escrow) => makeLiveEscrowId(escrow.txHash, escrow.index) === escrowId);
-    if (exactMatch) {
-      return exactMatch;
-    }
-
-    const txHashMatches = escrows.filter((escrow) => escrow.txHash === routeTxHash);
-    if (txHashMatches.length === 1) {
-      return txHashMatches[0] ?? null;
-    }
-
-    return null;
-  }, [escrowId, escrows, routeTxHash]);
+  const liveItem = useMemo(
+    () => findLiveEscrowForRoute(escrows, escrowId, indexedEscrows),
+    [escrowId, escrows, indexedEscrows],
+  );
   const indexedItem = useMemo(
     () => indexedEscrows.find((escrow) => escrow.id === escrowId) ?? indexedDetail,
     [escrowId, indexedDetail, indexedEscrows],
