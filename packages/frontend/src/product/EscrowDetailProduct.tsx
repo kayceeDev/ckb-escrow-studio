@@ -22,10 +22,12 @@ import {
 import { formatEscrowError } from "../error-format";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui";
 import { createExplorerTxUrl } from "../studio";
+import type { EscrowListItem } from "../types";
 import {
   ProductActionView,
   ProductEscrowRecord,
   findLiveEscrowForRoute,
+  getIndexedCurrentOutPointForRoute,
   mergeProductEscrowRecords,
   toIndexedProductEscrow,
   toLiveProductEscrow,
@@ -209,6 +211,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const [responseLinks, setResponseLinks] = useState("");
   const [responseFiles, setResponseFiles] = useState<FileEvidenceDraft[]>([]);
   const [decisionNote, setDecisionNote] = useState("");
+  const [exactLiveItem, setExactLiveItem] = useState<EscrowListItem | null>(null);
 
   useEffect(() => {
     if (!deploymentReady || isFetchingEscrows || hasFetchedEscrows) {
@@ -218,10 +221,22 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     void refreshEscrows();
   }, [deploymentReady, hasFetchedEscrows, isFetchingEscrows, refreshEscrows]);
 
-  const liveItem = useMemo(
-    () => findLiveEscrowForRoute(escrows, escrowId, indexedEscrows),
-    [escrowId, escrows, indexedEscrows],
+  const indexedRouteCandidates = useMemo(() => {
+    if (!indexedDetail || indexedEscrows.some((escrow) => escrow.id === indexedDetail.id)) {
+      return indexedEscrows;
+    }
+
+    return [...indexedEscrows, indexedDetail];
+  }, [indexedDetail, indexedEscrows]);
+  const discoveredLiveItem = useMemo(
+    () => findLiveEscrowForRoute(escrows, escrowId, indexedRouteCandidates),
+    [escrowId, escrows, indexedRouteCandidates],
   );
+  const indexedCurrentOutPoint = useMemo(
+    () => getIndexedCurrentOutPointForRoute(indexedRouteCandidates, escrowId),
+    [escrowId, indexedRouteCandidates],
+  );
+  const liveItem = discoveredLiveItem ?? exactLiveItem;
   const indexedItem = useMemo(
     () => indexedEscrows.find((escrow) => escrow.id === escrowId) ?? indexedDetail,
     [escrowId, indexedDetail, indexedEscrows],
@@ -249,7 +264,46 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   useEffect(() => {
     setIndexedDetail(null);
     setIndexedDetailError(null);
+    setExactLiveItem(null);
   }, [escrowId, network]);
+
+  useEffect(() => {
+    async function loadExactLiveItem() {
+      if (!deploymentReady || discoveredLiveItem || !indexedCurrentOutPoint) {
+        if (discoveredLiveItem) {
+          setExactLiveItem(null);
+        }
+        return;
+      }
+
+      try {
+        const cell = await client.getCellLiveNoCache(
+          {
+            txHash: indexedCurrentOutPoint.txHash,
+            index: BigInt(indexedCurrentOutPoint.index),
+          },
+          true,
+          false,
+        );
+        if (!cell) {
+          setExactLiveItem(null);
+          return;
+        }
+
+        setExactLiveItem({
+          txHash: cell.outPoint.txHash,
+          index: cell.outPoint.index.toString(),
+          capacity: cell.cellOutput.capacity.toString(),
+          lock: cell.cellOutput.lock,
+          decoded: decodeEscrowData(cell.outputData),
+        });
+      } catch {
+        setExactLiveItem(null);
+      }
+    }
+
+    void loadExactLiveItem();
+  }, [client, deploymentReady, discoveredLiveItem, indexedCurrentOutPoint]);
 
   useEffect(() => {
     async function loadDisputeCase() {

@@ -507,6 +507,21 @@ export function toSeedProductEscrow(
 }
 
 
+export function getIndexedCurrentOutPointForRoute(
+  indexedEscrows: IndexedEscrowRecord[],
+  routeEscrowId: string,
+): IndexedEscrowRecord["current"] | null {
+  const indexedMatch = indexedEscrows.find((escrow) => {
+    if (escrow.id === routeEscrowId) {
+      return true;
+    }
+
+    return escrow.current ? makeLiveEscrowId(escrow.current.txHash, escrow.current.index) === routeEscrowId : false;
+  });
+
+  return indexedMatch?.current ?? null;
+}
+
 export function findLiveEscrowForRoute(
   liveEscrows: EscrowListItem[],
   routeEscrowId: string,

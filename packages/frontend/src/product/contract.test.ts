@@ -5,6 +5,7 @@ import {
   filterParticipantEscrows,
   findLiveEscrowForRoute,
   getActionViews,
+  getIndexedCurrentOutPointForRoute,
   getEscrowHistoryBucket,
   getViewerRole,
   guidanceForEscrow,
@@ -290,6 +291,36 @@ describe("escrow history grouping", () => {
     ]);
   });
 
+  it("reproduces missing direct actions when recent live discovery misses the indexed current outpoint", () => {
+    const originId = "0xorigin:0";
+    const currentTxHash = `0x${"34".repeat(32)}`;
+    const indexed: IndexedEscrowRecord = {
+      id: originId,
+      network: "testnet",
+      origin: { txHash: "0xorigin" as `0x${string}`, index: "0" },
+      current: { txHash: currentTxHash as `0x${string}`, index: "2" },
+      latestTxHash: currentTxHash as `0x${string}`,
+      settlementTxHash: null,
+      state: "Funded",
+      buyerLockHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
+      sellerLockHash: "0x2222222222222222222222222222222222222222222222222222222222222222",
+      arbitratorLockHash: "0x3333333333333333333333333333333333333333333333333333333333333333",
+      amountShannons: "100000000",
+      deadlineMs: "1790000000000",
+      description: "Funded escrow",
+      dataHex: "0x00",
+      createdAt: "2026-04-01T00:00:00.000Z",
+      updatedAt: "2026-04-02T00:00:00.000Z",
+      closedAt: null,
+      events: [],
+    };
+
+    expect(findLiveEscrowForRoute([], originId, [indexed])).toBeNull();
+    expect(getIndexedCurrentOutPointForRoute([indexed], originId)).toEqual({
+      txHash: currentTxHash,
+      index: "2",
+    });
+  });
 
   it("reproduces disabled detail actions when stable indexed route has a current live cell", () => {
     const originId = "0xorigin:0";
