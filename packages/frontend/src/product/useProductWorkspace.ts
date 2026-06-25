@@ -32,14 +32,72 @@ const PRODUCT_STORAGE_KEYS = {
   activeSigner: "ckb-escrow:product-active-signer",
 } as const;
 
-interface StoredActiveSigner {
+export interface StoredActiveSigner {
   network: ProductNetwork;
   walletName: string;
   signerName: string;
 }
 
-function signerStorageKey(walletName: string, signerName: string): string {
+export interface ProductSignerOption {
+  walletName: string;
+  signerName: string;
+  signer: ccc.Signer;
+}
+
+export function signerStorageKey(walletName: string, signerName: string): string {
   return `${walletName}:${signerName}`;
+}
+
+export function getProductSignerOptions(wallets: WalletState["wallets"]): ProductSignerOption[] {
+  return wallets.flatMap((wallet) =>
+    wallet.signers.map((signerInfo) => ({
+      walletName: wallet.name,
+      signerName: signerInfo.name,
+      signer: signerInfo.signer,
+    })),
+  );
+}
+
+export function selectActiveSignerAfterWalletRefresh(input: {
+  wallets: WalletState["wallets"];
+  currentActiveSigner: ccc.Signer | null;
+  storedSigner: StoredActiveSigner | null;
+  network: ProductNetwork;
+}): ccc.Signer | null {
+  const options = getProductSignerOptions(input.wallets);
+  const currentOption = input.currentActiveSigner
+    ? options.find((option) => option.signer === input.currentActiveSigner)
+    : undefined;
+
+  if (currentOption) {
+    return currentOption.signer;
+  }
+
+  if (input.storedSigner?.network !== input.network) {
+    return null;
+  }
+
+  return (
+    options.find(
+      (option) =>
+        option.walletName === input.storedSigner?.walletName &&
+        option.signerName === input.storedSigner?.signerName,
+    )?.signer ?? null
+  );
+}
+
+export function shouldReconnectActiveSigner(input: {
+  activeOption: ProductSignerOption | undefined;
+  restoredSignerKey: string | null;
+}): boolean {
+  if (!input.activeOption) {
+    return false;
+  }
+
+  return (
+    input.restoredSignerKey !==
+    signerStorageKey(input.activeOption.walletName, input.activeOption.signerName)
+  );
 }
 
 function loadStoredActiveSigner(): StoredActiveSigner | null {
@@ -109,6 +167,7 @@ export function useProductWorkspace() {
   );
   const controllerRef = useRef<ccc.SignersController | null>(null);
   const restoredSignerRef = useRef<string | null>(null);
+  const [walletRefreshNonce, setWalletRefreshNonce] = useState(0);
 
   const client = useMemo(() => NETWORK_CLIENTS[network], [network]);
 
@@ -120,36 +179,19 @@ export function useProductWorkspace() {
     try {
       setStatus(`Refreshing ${network} wallets...`);
       controllerRef.current.disconnect();
+      restoredSignerRef.current = null;
+      setWalletRefreshNonce((current) => current + 1);
       await controllerRef.current.refresh(client, (wallets) => {
         const storedSigner = loadStoredActiveSigner();
-        const restoredSigner =
-          storedSigner?.network === network
-            ? wallets
-                .flatMap((wallet) =>
-                  wallet.signers.map((signerInfo) => ({
-                    walletName: wallet.name,
-                    signerName: signerInfo.name,
-                    signer: signerInfo.signer,
-                  })),
-                )
-                .find(
-                  (option) =>
-                    option.walletName === storedSigner.walletName &&
-                    option.signerName === storedSigner.signerName,
-                )
-            : undefined;
 
         setWalletState((current) => ({
           wallets,
-          activeSigner:
-            current.activeSigner &&
-            wallets.some((wallet) =>
-              wallet.signers.some((signerInfo) => signerInfo.signer === current.activeSigner),
-            )
-              ? current.activeSigner
-              : restoredSigner?.signer
-                ? restoredSigner.signer
-                : null,
+          activeSigner: selectActiveSignerAfterWalletRefresh({
+            wallets,
+            currentActiveSigner: current.activeSigner,
+            storedSigner,
+            network,
+          }),
         }));
       });
       setStatus(`Wallet discovery finished for ${network}.`);
@@ -200,14 +242,20 @@ export function useProductWorkspace() {
   }, [participantScripts]);
 
   useEffect(() => {
+    const activeSigner = walletState.activeSigner;
+    let cancelled = false;
+
     async function updateActiveLockHash() {
-      if (!walletState.activeSigner) {
+      if (!activeSigner) {
         setActiveLockHash(null);
         return;
       }
 
       try {
-        const address = await walletState.activeSigner.getRecommendedAddressObj();
+        const address = await activeSigner.getRecommendedAddressObj();
+        if (cancelled) {
+          return;
+        }
         const normalizedScript = ccc.Script.from(address.script);
         const lockHash = normalizedScript.hash();
         setActiveLockHash(lockHash);
@@ -216,11 +264,17 @@ export function useProductWorkspace() {
           [lockHash]: storedScriptFromScriptLike(normalizedScript),
         }));
       } catch {
-        setActiveLockHash(null);
+        if (!cancelled) {
+          setActiveLockHash(null);
+        }
       }
     }
 
     void updateActiveLockHash();
+
+    return () => {
+      cancelled = true;
+    };
   }, [walletState.activeSigner]);
 
   const refreshEscrows = useCallback(async () => {
@@ -323,6 +377,10 @@ export function useProductWorkspace() {
       restoredSignerRef.current = null;
       setWalletState((current) => ({ ...current, activeSigner: null }));
       setActiveLockHash(null);
+      setEscrows([]);
+      setIndexedEscrows([]);
+      setHasFetchedEscrows(false);
+      setEscrowFetchError(null);
       setStatus("Wallet disconnected.");
     } catch (error) {
       setStatus(`Wallet disconnect failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -352,25 +410,19 @@ export function useProductWorkspace() {
       return;
     }
 
-    const activeOption = walletState.wallets
-      .flatMap((wallet) =>
-        wallet.signers.map((signerInfo) => ({
-          walletName: wallet.name,
-          signerName: signerInfo.name,
-          signer: signerInfo.signer,
-        })),
-      )
-      .find((option) => option.signer === activeSigner);
+    const activeOption = getProductSignerOptions(walletState.wallets).find(
+      (option) => option.signer === activeSigner,
+    );
 
     if (!activeOption) {
       return;
     }
 
-    const key = signerStorageKey(activeOption.walletName, activeOption.signerName);
-    if (restoredSignerRef.current === key) {
+    if (!shouldReconnectActiveSigner({ activeOption, restoredSignerKey: restoredSignerRef.current })) {
       return;
     }
 
+    const key = signerStorageKey(activeOption.walletName, activeOption.signerName);
     restoredSignerRef.current = key;
     void activeSigner
       .connect()
@@ -390,7 +442,7 @@ export function useProductWorkspace() {
           current.activeSigner === activeSigner ? { ...current, activeSigner: null } : current,
         );
       });
-  }, [network, walletState.activeSigner, walletState.wallets]);
+  }, [network, walletRefreshNonce, walletState.activeSigner, walletState.wallets]);
 
   const saveParticipantScript = useCallback((lockHash: string, script: StoredParticipantScript) => {
     setParticipantScripts((current) => ({
