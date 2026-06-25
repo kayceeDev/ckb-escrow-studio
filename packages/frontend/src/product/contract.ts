@@ -336,7 +336,7 @@ export function guidanceForEscrow(
             ? "Claim your refund now that the deadline has passed. The product will prepare the required timestamp proof automatically."
             : "Wait for the seller to mark the escrow as delivered, or cancel before work advances.",
           detail:
-            "Buyer funds are already locked on chain in the escrow cell. The seller must mark delivery before release or dispute actions appear.",
+            "Buyer funds are already held in escrow. The seller must mark delivery before release or dispute actions appear.",
         };
       }
       if (viewerRole === "seller") {
@@ -349,17 +349,17 @@ export function guidanceForEscrow(
       }
       if (viewerRole === "arbitrator") {
         return {
-          summary: "No arbitrator action yet.",
+          summary: "No reviewer action yet.",
           nextStep: "Wait unless the escrow moves into a dispute.",
           detail:
-            "Arbitrators only step in once a delivered escrow becomes disputed.",
+            "Reviewers only step in once a delivered escrow becomes disputed.",
         };
       }
       return {
         summary: "View-only funded escrow.",
         nextStep: "Connect the buyer, seller, or arbitrator wallet to unlock role-based actions.",
         detail:
-          "This wallet does not match any participant lock hash stored in the escrow cell, so the page stays read-only.",
+          "This wallet is not part of the deal, so the page stays read-only.",
       };
     case "Delivered":
       if (viewerRole === "buyer") {
@@ -368,7 +368,7 @@ export function guidanceForEscrow(
           nextStep: "Release funds if delivery is acceptable, or open a dispute if something is wrong.",
           detail:
             "Delivered escrows stay open until the buyer explicitly releases funds to the seller or escalates to a dispute.",
-          supportLabel: "Release needs the seller payout script saved on this device.",
+          supportLabel: "Release needs the seller wallet address saved on this device.",
         };
       }
       if (viewerRole === "seller") {
@@ -381,26 +381,26 @@ export function guidanceForEscrow(
       }
       if (viewerRole === "arbitrator") {
         return {
-          summary: "Stand by for dispute resolution.",
+          summary: "Stand by for dispute review.",
           nextStep: "No action is needed unless the buyer or seller opens a dispute.",
           detail:
-            "Arbitrators only act after the escrow enters the Disputed state.",
+            "Reviewers only act after the escrow enters the Disputed state.",
         };
       }
       return {
         summary: "View-only delivered escrow.",
         nextStep: "Connect a participant wallet to continue from this state.",
         detail:
-          "Only the buyer, seller, or arbitrator matching the on-chain lock hashes can act on this escrow.",
+          "Only the buyer, seller, or reviewer wallet can act on this escrow.",
       };
     case "Disputed":
       if (viewerRole === "arbitrator") {
         return {
           summary: "Arbitrator decision required.",
-          nextStep: "Resolve the dispute to the buyer or seller once the recipient lock script is available.",
+          nextStep: "Resolve the dispute to the buyer or seller once the recipient wallet address is available.",
           detail:
-            "Disputed escrows can only be settled by the arbitrator. The payout path still needs the recipient's full lock script.",
-          supportLabel: "Resolution stays limited until the recipient script is saved locally.",
+            "Disputed escrows can only be settled by the reviewer. Closing the dispute still needs the recipient wallet address.",
+          supportLabel: "Resolution stays limited until the recipient wallet address is saved.",
         };
       }
       if (viewerRole === "buyer" || viewerRole === "seller") {
@@ -408,7 +408,7 @@ export function guidanceForEscrow(
           summary: "Dispute is open.",
           nextStep: "Wait for the arbitrator to review and resolve the escrow.",
           detail:
-            "The contract now restricts settlement authority to the arbitrator matching the escrow's stored lock hash.",
+            "The reviewer now decides the final outcome.",
         };
       }
       return {
@@ -416,7 +416,7 @@ export function guidanceForEscrow(
         nextStep: "Connect the arbitrator or another participant wallet for more context.",
         detail:
           "This dispute can only move forward with the matching arbitrator wallet and recipient settlement details.",
-        supportLabel: "Dispute resolution is participant-gated by lock hash.",
+        supportLabel: "Dispute resolution is limited to the assigned reviewer.",
       };
     case "Completed":
       return {

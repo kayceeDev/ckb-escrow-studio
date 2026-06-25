@@ -75,9 +75,9 @@ export function MobileNav({ items }: MobileNavProps) {
             <div className="flex flex-col">
               <span className="text-sm font-semibold tracking-[0.01em]">{item.label}</span>
               <span className={cn("text-xs", active ? "text-primary-foreground/80" : "text-muted-foreground")}>
-                {item.href === "/" && "Live dashboard and role-based escrows"}
-                {item.href === "/escrows" && "Browse all live escrow cards in one place"}
-                {item.href === "/escrows/create" && "Start a new protected payment flow"}
+                {item.href === "/" && "Dashboard and next actions"}
+                {item.href === "/escrows" && "Browse active and past escrows"}
+                {item.href === "/escrows/create" && "Start a protected deal"}
               </span>
             </div>
             <MoveRight className={cn("h-4 w-4 transition-transform group-hover:translate-x-0.5", active ? "text-primary-foreground" : "text-muted-foreground")} />
@@ -126,13 +126,13 @@ export function MobileNav({ items }: MobileNavProps) {
                   <Badge variant="success">Wallet</Badge>
                   <Badge variant="outline" className="capitalize">{network}</Badge>
                   <Badge variant={deploymentReady ? "success" : "destructive"}>
-                    {deploymentReady ? "Deployment ready" : "Network unavailable"}
+                    {deploymentReady ? "Ready" : "Unavailable"}
                   </Badge>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-foreground">Escrow workspace</p>
                   <p className="text-xs leading-5 text-muted-foreground">
-                    Mobile wallet, network, and navigation controls stay in one place so the buyer flow keeps its context.
+                    Wallet, network, and navigation stay together so the deal flow keeps its context.
                   </p>
                 </div>
               </div>
@@ -148,7 +148,7 @@ export function MobileNav({ items }: MobileNavProps) {
                 className={`rounded-[1.1rem] border p-3 text-left transition ${network === "testnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Testnet</span></div>
-                <p className="text-xs text-muted-foreground">Default buyer-facing network with live deployment metadata.</p>
+                <p className="text-xs text-muted-foreground">Default test environment for safe escrow trials.</p>
               </button>
               <button
                 type="button"
@@ -156,7 +156,7 @@ export function MobileNav({ items }: MobileNavProps) {
                 className={`rounded-[1.1rem] border p-3 text-left transition ${network === "mainnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Mainnet</span></div>
-                <p className="text-xs text-muted-foreground">Structured support only until production deployment metadata is complete.</p>
+                <p className="text-xs text-muted-foreground">Mainnet remains gated until production setup is ready.</p>
               </button>
             </div>
 
@@ -168,7 +168,7 @@ export function MobileNav({ items }: MobileNavProps) {
                     Wallet
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {walletState.activeSigner ? "Connected signer ready for role-based actions" : "Connect a signer to unlock live escrow actions"}
+                    {walletState.activeSigner ? "Connected wallet ready for deal actions" : "Connect a wallet to unlock deal actions"}
                   </p>
                 </div>
                 <Badge variant={walletState.activeSigner ? "success" : "outline"}>
@@ -207,7 +207,7 @@ export function MobileNav({ items }: MobileNavProps) {
                   })}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">No wallet signers discovered yet. Refresh or install a compatible wallet.</p>
+                <p className="text-xs text-muted-foreground">No wallets discovered yet. Refresh or install a compatible wallet.</p>
               )}
             </div>
 
@@ -217,7 +217,7 @@ export function MobileNav({ items }: MobileNavProps) {
 
             {isFetchingEscrows ? (
               <div className="rounded-[1.25rem] border border-dashed border-primary/20 bg-primary/5 p-4 text-xs leading-5 text-muted-foreground">
-                Refreshing live escrow discovery for the selected network.
+                Refreshing escrows for the selected network.
               </div>
             ) : null}
 

@@ -15,10 +15,10 @@
     @apply min-h-screen bg-background font-sans text-foreground antialiased;
     background-color: #f8f5ec;
     background-image:
-      radial-gradient(circle at 12% 0%, rgba(23, 100, 59, 0.16), transparent 26rem),
-      radial-gradient(circle at 82% 12%, rgba(216, 234, 211, 0.62), transparent 24rem),
-      radial-gradient(circle at 50% 100%, rgba(255, 253, 247, 0.9), transparent 28rem),
-      linear-gradient(135deg, #f8f5ec 0%, #f3f8ee 48%, #fffdf7 100%);
+      radial-gradient(circle at 12% 0%, rgba(23, 100, 59, 0.14), transparent 25rem),
+      radial-gradient(circle at 86% 10%, rgba(204, 231, 204, 0.64), transparent 26rem),
+      radial-gradient(circle at 50% 100%, rgba(255, 253, 247, 0.92), transparent 30rem),
+      linear-gradient(135deg, #f9f6ed 0%, #f1f8ed 46%, #fffdf7 100%);
   }
 
   button,

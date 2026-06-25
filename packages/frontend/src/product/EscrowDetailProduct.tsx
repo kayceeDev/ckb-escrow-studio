@@ -42,7 +42,7 @@ import { createEscrowInput } from "./utils";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
 function ActionBadge({ source }: { source: ProductEscrowRecord["source"] }) {
-  return <Badge variant={source === "live" ? "success" : "outline"}>{source === "live" ? "Live escrow" : "Indexed receipt"}</Badge>;
+  return <Badge variant={source === "live" ? "success" : "outline"}>{source === "live" ? "Active deal" : "Receipt"}</Badge>;
 }
 
 function canExecuteInProduct(
@@ -94,9 +94,9 @@ function recipientRequirementForAction(
   switch (action) {
     case "Complete":
     case "ResolveToSeller":
-      return { role: "seller", lockHash: record.sellerLockHash, label: "Seller payout script" };
+      return { role: "seller", lockHash: record.sellerLockHash, label: "Seller wallet address" };
     case "ResolveToBuyer":
-      return { role: "buyer", lockHash: record.buyerLockHash, label: "Buyer refund script" };
+      return { role: "buyer", lockHash: record.buyerLockHash, label: "Buyer wallet address" };
     default:
       return null;
   }
@@ -567,7 +567,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
         }
         case "Complete":
           if (!sellerStoredScript) {
-            throw new Error("Release funds is unavailable on this device because the seller payout script is missing.");
+            throw new Error("Release funds needs the seller wallet address before this deal can close.");
           }
           txHash = await service.sendComplete({
             escrowInput: cell,
@@ -576,13 +576,13 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           break;
         case "ResolveToBuyer":
           if (!disputeCase) {
-            throw new Error("Create or load the dispute evidence case before resolving in the product UI. Use Studio for raw protocol fallback.");
+            throw new Error("Create or load the dispute evidence case before resolving this deal.");
           }
           if (!decisionNote.trim()) {
             throw new Error("Add an arbitrator decision note before resolving this dispute.");
           }
           if (!buyerStoredScript) {
-            throw new Error("Resolve to buyer is unavailable on this device because the buyer payout script is missing.");
+            throw new Error("Resolve to buyer needs the buyer wallet address before this dispute can close.");
           }
           txHash = await service.sendResolveToBuyer({
             escrowInput: cell,
@@ -599,13 +599,13 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           break;
         case "ResolveToSeller":
           if (!disputeCase) {
-            throw new Error("Create or load the dispute evidence case before resolving in the product UI. Use Studio for raw protocol fallback.");
+            throw new Error("Create or load the dispute evidence case before resolving this deal.");
           }
           if (!decisionNote.trim()) {
             throw new Error("Add an arbitrator decision note before resolving this dispute.");
           }
           if (!sellerStoredScript) {
-            throw new Error("Resolve to seller is unavailable on this device because the seller payout script is missing.");
+            throw new Error("Resolve to seller needs the seller wallet address before this dispute can close.");
           }
           txHash = await service.sendResolveToSeller({
             escrowInput: cell,
@@ -628,7 +628,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       const isTerminalAction = ["Cancel", "Refund", "Complete", "ResolveToBuyer", "ResolveToSeller"].includes(action);
       setStatus(
         isTerminalAction
-          ? `${action} submitted. Waiting for the escrow indexer to recover the closed history record.`
+          ? `${action} submitted. Waiting for the closed receipt to appear in history.`
           : `${action} submitted.`,
       );
       await pollAfterAction({ txHash, previousRecord: record, expectedTerminal: isTerminalAction });
@@ -672,7 +672,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           <CardContent className="space-y-4 p-8">
             <p className="text-lg font-semibold">{network} deployment is unavailable</p>
             <p className="text-sm text-muted-foreground">
-              This detail route needs complete deployment metadata for the selected network before live escrow data can be resolved.
+              This network is not ready for product actions yet. Switch networks or use Studio for setup.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button asChild>
@@ -798,7 +798,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                   <strong className="text-foreground">Assigned arbitrator:</strong> {record.arbitratorLabel}
                 </p>
                 <p className="mt-2 leading-6">
-                  The platform assigned this arbitrator when the escrow was created, and that lock hash is now fixed in the on-chain escrow data.
+                  This reviewer was assigned when the escrow was created and handles disputes if the deal is escalated.
                 </p>
               </div>
 
@@ -818,11 +818,11 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                   <div className="mb-2 flex items-center gap-2 text-primary"><ShieldCheck className="h-4 w-4" /><strong>Your role</strong></div>
                   <p>
                     {record.viewerRole === "viewer"
-                      ? "This wallet does not match a participant lock hash, so the detail page stays read-only until you switch wallets."
-                      : `The connected wallet matches the escrow's ${record.viewerRole} lock hash, so the actions shown here follow that role.`}
+                      ? "This wallet is not one of the deal participants, so this page is read-only until you switch wallets."
+                      : `You are viewing this deal as the ${record.viewerRole}.`}
                   </p>
                   <p className="mt-3 text-xs leading-5">
-                    Roles are discovered from on-chain lock hashes, not from usernames or off-chain accounts.
+                    Each role sees only the actions available for that stage of the deal.
                   </p>
                 </div>
               </div>
@@ -832,7 +832,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><MessageSquareWarning className="h-5 w-5 text-primary" />Dispute evidence</CardTitle>
-              <CardDescription>Evidence stays off-chain for v1, but every item is hashed and linked to the escrow dispute case.</CardDescription>
+              <CardDescription>Keep notes, links, and files organized for the reviewer when a dispute is opened.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {isFetchingDisputeCase ? (
@@ -845,7 +845,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                       <Badge variant="outline">Requested: {disputeCase.requestedOutcome}</Badge>
                     </div>
                     <p className="mt-3 font-medium text-foreground">{disputeCase.reason}</p>
-                    <p className="mt-2 break-all text-xs text-muted-foreground">Bundle hash: {disputeCase.evidenceBundleHash}</p>
+
                   </div>
 
                   <div className="space-y-3">
@@ -864,8 +864,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                               <Link2 className="h-4 w-4" /> Open evidence link
                             </Link>
                           ) : null}
-                          <p className="mt-2 break-all text-xs text-muted-foreground">Hash: {item.contentHash}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">Submitted by {shortHash(item.submittedByLockHash)}</p>
+                          <p className="mt-2 text-xs text-muted-foreground">Submitted by participant wallet</p>
                         </div>
                       ))
                     )}
@@ -884,7 +883,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                   {record.state === "Disputed" && record.viewerRole === "arbitrator" ? (
                     <div className="rounded-[1.25rem] border border-primary/20 bg-white/80 p-4">
                       <p className="font-medium text-foreground">Arbitrator decision note</p>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">The product blocks direct resolution until this note is written. Studio remains available for raw protocol debugging.</p>
+                      <p className="mt-1 text-sm leading-6 text-muted-foreground">Add a short decision note before closing the dispute.</p>
                       <textarea value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} placeholder="Explain the decision before resolving to buyer or seller" className="mt-3 min-h-28 w-full rounded-2xl border border-border bg-white/80 px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/10" />
                       {disputeCase.decision ? <p className="mt-3 text-sm text-muted-foreground">Decision already recorded: {disputeCase.decision.decisionNote}</p> : null}
                     </div>
@@ -915,7 +914,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
               ) : (
                 <div className="rounded-[1.25rem] border border-border bg-white/75 p-4 text-sm text-muted-foreground">
                   <FileText className="mb-3 h-5 w-5 text-primary" />
-                  No dispute case is recorded for this escrow yet. If a participant opens a dispute, the product will collect the reason and evidence before submitting the on-chain state change.
+                  No dispute has been opened for this deal yet. If one is opened, evidence and reviewer notes will appear here.
                 </div>
               )}
             </CardContent>
@@ -925,13 +924,13 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
             <CardHeader>
               <CardTitle>Available actions</CardTitle>
               <CardDescription>
-                Direct actions come first. Advanced settlement paths stay visible with clear limitations instead of failing silently.
+                The available next steps are based on this deal's current state and your connected wallet.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {record.actions.length === 0 ? (
                 <div className="rounded-[1.25rem] border border-border bg-white/75 p-4 text-sm text-muted-foreground">
-                  No actions are available for this wallet in the current escrow state.
+                  No actions are available for this wallet at the current stage.
                 </div>
               ) : (
                 record.actions.map((action) => {
@@ -954,7 +953,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                           <p className="mt-1 text-sm leading-6 text-muted-foreground">{action.description}</p>
                         </div>
                         <Badge variant={inProduct ? "success" : action.mode === "direct" ? "secondary" : "outline"}>
-                          {inProduct ? "Ready in product" : requirement && !hasRequiredRecipientScript ? "Needs payout script" : action.mode === "direct" ? "Needs signer context" : "Studio fallback"}
+                          {inProduct ? "Ready" : requirement && !hasRequiredRecipientScript ? "Needs address" : action.mode === "direct" ? "Connect wallet" : "Studio"}
                         </Badge>
                       </div>
                       <div className="flex flex-wrap gap-3">
@@ -973,24 +972,24 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                         {!inProduct ? (
                           <p className="self-center text-xs leading-5 text-muted-foreground">
                             {requirement && !hasRequiredRecipientScript
-                              ? `${requirement.label} is required before the app can build the payout transaction.`
+                              ? `${requirement.label} is required before this deal can be closed.`
                               : action.mode === "studio"
-                                ? "Open Studio if you need raw debug controls for this action."
-                                : "Reconnect the correct participant wallet to enable this action in-product."}
+                                ? "Open Studio for advanced controls."
+                                : "Connect the buyer, seller, or arbitrator wallet for this action."}
                           </p>
                         ) : null}
                       </div>
                       {requirement && !hasRequiredRecipientScript ? (
                         <div className="mt-4 rounded-[1rem] border border-dashed border-primary/35 bg-primary/5 p-4">
-                          <p className="text-sm font-medium text-foreground">Recover {requirement.role} payout script</p>
+                          <p className="text-sm font-medium text-foreground">Add {requirement.role} address</p>
                           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                            The contract stores participant lock hashes for authorization, but settlement outputs need the full recipient lock script. Paste the {requirement.role} testnet/mainnet address that matches {shortHash(requirement.lockHash)} and the app will verify it before saving.
+                            Paste the {requirement.role} wallet address so the app can prepare the closing transaction.
                           </p>
                           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                             <input
                               value={recoveryAddress}
                               onChange={(event) => setRecoveryAddress(event.target.value)}
-                              placeholder={`${requirement.role} CKB address`}
+                              placeholder={`${requirement.role} wallet address`}
                               className="min-h-11 flex-1 rounded-full border border-border bg-white/80 px-4 text-sm outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
                             />
                             <Button
@@ -999,7 +998,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                               disabled={recoveryBusy || recoveryAddress.trim().length === 0}
                               onClick={() => void saveRecipientScript(requirement)}
                             >
-                              {recoveryBusy ? "Saving..." : "Save script"}
+                              {recoveryBusy ? "Saving..." : "Save address"}
                             </Button>
                           </div>
                           {recoveryStatus ? <p className="mt-2 text-xs leading-5 text-muted-foreground">{recoveryStatus}</p> : null}
@@ -1011,9 +1010,9 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
               )}
 
               <div className="rounded-[1.25rem] border border-border bg-secondary/60 p-4 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">Status</p>
+                <p className="font-medium text-foreground">Activity</p>
                 <p className="mt-2">{status}</p>
-                {lastTxHash ? <p className="mt-2 break-all text-xs">Last transaction: {lastTxHash}</p> : null}
+
               </div>
             </CardContent>
           </Card>
@@ -1022,13 +1021,13 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
         <div className="space-y-6 self-start xl:sticky xl:top-24">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-primary" />Connected signer</CardTitle>
-              <CardDescription>Use the navbar wallet control to switch signer or network.</CardDescription>
+              <CardTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-primary" />Connected wallet</CardTitle>
+              <CardDescription>Use the navbar to switch wallet or network.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 <Badge variant={walletState.activeSigner ? "success" : "outline"}>
-                  {walletState.activeSigner ? "Signer selected" : "No signer"}
+                  {walletState.activeSigner ? "Wallet connected" : "No wallet"}
                 </Badge>
                 <Badge variant={record.viewerRole === "viewer" ? "outline" : "success"}>
                   {record.viewerRole}
@@ -1037,7 +1036,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
               </div>
               <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
                 <p className="text-sm leading-6 text-muted-foreground">
-                  The selected signer is matched against the buyer, seller, and assigned arbitrator lock hashes. Switch wallets from the top-right control if this page is read-only.
+                  The connected wallet decides whether you can act as buyer, seller, or arbitrator. Switch wallets from the navbar if this deal is read-only.
                 </p>
               </div>
             </CardContent>
@@ -1046,7 +1045,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle>Timeline</CardTitle>
-              <CardDescription>Each state change stays in escrow order, with on-chain date and time when it can be recovered.</CardDescription>
+              <CardDescription>The deal moves through these steps from funding to close.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {record.timeline.map((step, index) => {
@@ -1058,8 +1057,8 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                     ? `Updated ${stepTimestamp}`
                     : `Recorded ${stepTimestamp}`
                   : step.status === "pending"
-                    ? "Date and time appear after this step is confirmed."
-                    : "On-chain time is not recoverable from the current history view.";
+                    ? "Appears after this step is confirmed."
+                    : "Time unavailable in this view.";
 
                 return (
                   <div key={step.label} className="flex gap-4">

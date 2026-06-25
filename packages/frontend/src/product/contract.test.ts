@@ -92,7 +92,7 @@ describe("product contract helpers", () => {
     expect(deliveredGuidance.summary).toContain("Buyer decision");
     expect(deliveredGuidance.nextStep).toContain("Release funds");
     expect(deliveredGuidance.detail).toContain("explicitly releases funds");
-    expect(deliveredGuidance.supportLabel).toContain("seller payout script");
+    expect(deliveredGuidance.supportLabel).toContain("seller wallet address");
   });
 });
 

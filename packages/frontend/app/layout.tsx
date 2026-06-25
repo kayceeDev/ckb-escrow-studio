@@ -28,7 +28,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <ProductWorkspaceProvider>
-          <div className="relative overflow-x-hidden">
+          <div className="relative flex min-h-screen flex-col overflow-x-hidden">
             <div className="absolute inset-x-0 top-0 -z-10 h-[28rem] bg-[radial-gradient(circle_at_top_left,rgba(30,122,70,0.18),transparent_34%),radial-gradient(circle_at_top_right,rgba(133,181,146,0.12),transparent_30%)]" />
 
             <header className="sticky top-0 z-30 border-b border-border/80 bg-background/86 backdrop-blur-xl">
@@ -57,16 +57,19 @@ export default function RootLayout({
               </div>
             </header>
 
-            <main>{children}</main>
+            <main className="flex-1">{children}</main>
 
-            <footer className="border-t border-border/80 bg-background/70">
-              <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 px-4 py-6 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between md:px-6">
+            <footer className="mt-12 border-t border-border/80 bg-background/82 backdrop-blur">
+              <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 px-4 py-7 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between md:px-6">
                 <p>
-                  Buyer-first escrow experience on CKB with platform-assigned dispute protection for buyers, sellers, and arbitrators.
+                  A calmer way to hold funds until work is delivered and accepted.
                 </p>
-                <div className="flex items-center gap-3">
-                  <Link className="hover:text-foreground" href="/escrows/create">
-                    Create Escrow
+                <div className="flex flex-wrap items-center gap-4">
+                  <Link className="hover:text-foreground" href="/escrows">
+                    Escrow ledger
+                  </Link>
+                  <Link className="hover:text-foreground" href="/studio">
+                    Studio
                   </Link>
                 </div>
               </div>

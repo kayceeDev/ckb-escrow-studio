@@ -91,7 +91,7 @@ export function ProductNavbarWallet() {
             {activeSignerLabel ? activeSignerLabel.signerName : "Connect wallet"}
           </p>
           <p className="hidden max-w-[11rem] truncate text-xs text-muted-foreground xl:block">
-            {activeSignerLabel ? activeSignerLabel.walletName : deploymentReady ? "Choose signer" : "Network unavailable"}
+            {activeSignerLabel ? activeSignerLabel.walletName : deploymentReady ? "Choose wallet" : "Unavailable"}
           </p>
         </div>
 
@@ -125,16 +125,16 @@ export function ProductNavbarWallet() {
                     <Badge variant="success">Wallet</Badge>
                     <Badge variant="outline" className="capitalize">{network}</Badge>
                     <Badge variant={deploymentReady ? "success" : "destructive"}>
-                      {deploymentReady ? "Deployment ready" : "Network unavailable"}
+                      {deploymentReady ? "Ready" : "Unavailable"}
                     </Badge>
                   </div>
                   <p className="truncate text-[15px] font-semibold text-foreground">
-                    {activeSignerLabel ? activeSignerLabel.signerName : "No signer connected"}
+                    {activeSignerLabel ? activeSignerLabel.signerName : "No wallet connected"}
                   </p>
                   <p className="mt-1 max-w-[21rem] text-[13px] leading-5 text-muted-foreground">
                     {activeSignerLabel
-                      ? `${activeSignerLabel.walletName} is active for role discovery and transaction signing.`
-                      : "Connect one signer here; the whole product will use that wallet context."}
+                      ? `${activeSignerLabel.walletName} is active for this escrow workspace.`
+                      : "Connect one wallet here; the whole product will use that context."}
                   </p>
                 </div>
                 <button
@@ -159,7 +159,7 @@ export function ProductNavbarWallet() {
                   )}
                 >
                   <div className="mb-1.5 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Testnet</span></div>
-                  <p className="text-xs leading-5 text-muted-foreground">ckt addresses and live buyer-facing deployment.</p>
+                  <p className="text-xs leading-5 text-muted-foreground">Test safely before mainnet.</p>
                 </button>
                 <button
                   type="button"
@@ -170,7 +170,7 @@ export function ProductNavbarWallet() {
                   )}
                 >
                   <div className="mb-1.5 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Mainnet</span></div>
-                  <p className="text-xs leading-5 text-muted-foreground">Structured support only until deployment metadata is complete.</p>
+                  <p className="text-xs leading-5 text-muted-foreground">Mainnet remains gated until production setup is ready.</p>
                 </button>
               </div>
 
@@ -178,7 +178,7 @@ export function ProductNavbarWallet() {
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-primary" />
                   <span className="text-sm font-medium text-foreground">
-                    {connected ? "Signer active" : "Choose signer"}
+                    {connected ? "Wallet active" : "Choose wallet"}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -197,7 +197,7 @@ export function ProductNavbarWallet() {
               <div className="max-h-[19rem] space-y-1.5 overflow-y-auto pr-1">
                 {signerOptions.length === 0 ? (
                   <div className="rounded-[0.9rem] border border-dashed border-border bg-white/75 p-3 text-sm text-muted-foreground">
-                    No wallet signers discovered yet. Refresh the wallet list or install a CCC-compatible wallet.
+                    No wallets discovered yet. Refresh or install a compatible wallet.
                   </div>
                 ) : (
                   signerOptions.map((option) => {
@@ -230,7 +230,7 @@ export function ProductNavbarWallet() {
 
               {activeLockHash ? (
                 <div className="rounded-[0.9rem] border border-border/70 bg-secondary/55 p-2.5 text-xs leading-5 text-muted-foreground">
-                  Active lock hash: <span className="font-medium text-foreground">{shortHash(activeLockHash)}</span>
+                  Wallet connected for escrow actions.
                 </div>
               ) : null}
 
@@ -240,7 +240,7 @@ export function ProductNavbarWallet() {
 
               {isFetchingEscrows ? (
                 <div className="rounded-[0.9rem] border border-dashed border-primary/25 bg-primary/5 p-2.5 text-xs leading-5 text-muted-foreground">
-                  Refreshing live escrow discovery for the selected network.
+                  Refreshing escrows for the selected network.
                 </div>
               ) : null}
 

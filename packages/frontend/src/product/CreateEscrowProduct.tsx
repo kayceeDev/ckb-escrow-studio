@@ -250,7 +250,7 @@ export function CreateEscrowProduct() {
           <CardHeader>
             <CardTitle className="text-2xl">Create a New Escrow</CardTitle>
             <CardDescription>
-              This is the standalone buyer flow: real participant addresses, a connected buyer wallet, deployment metadata provided by the app, and automatic platform arbitrator assignment for the active network.
+              Create a protected payment for a known seller. The app keeps the buyer flow simple and assigns dispute review automatically.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -261,7 +261,7 @@ export function CreateEscrowProduct() {
                 className={`rounded-[1.25rem] border p-4 text-left transition ${network === "testnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Testnet</span></div>
-                <p className="text-sm leading-6 text-muted-foreground">Default buyer-facing network with live deployment metadata and platform-managed arbitration.</p>
+                <p className="text-sm leading-6 text-muted-foreground">Default test environment for safe escrow trials.</p>
               </button>
               <button
                 type="button"
@@ -269,7 +269,7 @@ export function CreateEscrowProduct() {
                 className={`rounded-[1.25rem] border p-4 text-left transition ${network === "mainnet" ? "border-primary/30 bg-primary/10" : "border-border bg-white/75 hover:border-primary/20"}`}
               >
                 <div className="mb-2 flex items-center gap-2 text-primary"><Globe className="h-4 w-4" /><span className="font-medium">Mainnet</span></div>
-                <p className="text-sm leading-6 text-muted-foreground">Structurally supported, but it stays gated until complete production deployment metadata and active arbitrators are ready.</p>
+                <p className="text-sm leading-6 text-muted-foreground">Mainnet remains gated until production setup is ready.</p>
               </button>
             </div>
 
@@ -289,14 +289,14 @@ export function CreateEscrowProduct() {
                   {walletState.activeSigner ? "Buyer wallet connected" : "Connect buyer wallet"}
                 </Badge>
                 <Badge variant={deploymentReady ? "success" : "destructive"}>
-                  {deploymentReady ? `${network} deployment ready` : `No ${network} deployment`}
+                  {deploymentReady ? `${network} ready` : `${network} unavailable`}
                 </Badge>
                 <Badge variant={hasAvailableArbitratorPool ? "success" : "destructive"}>
                   {hasAvailableArbitratorPool ? "Arbitration ready" : "Arbitration unavailable"}
                 </Badge>
               </div>
               <p className="text-sm leading-6 text-muted-foreground">
-                Use the wallet control in the navbar to select the buyer signer. Buyers never enter protocol metadata or choose arbitrators manually in this flow.
+                Use the wallet control in the navbar to select the buyer wallet. Buyers do not need to manage technical setup in this flow.
               </p>
             </div>
 
@@ -351,7 +351,7 @@ export function CreateEscrowProduct() {
           <CardHeader>
             <CardTitle>Buyer Checklist</CardTitle>
             <CardDescription>
-              Real buyer wallet first, then seller and order details, then a live escrow with a platform-assigned arbitrator.
+              Start with the buyer wallet, then seller and order details, then fund the escrow.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
@@ -366,15 +366,15 @@ export function CreateEscrowProduct() {
             <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
               <p className="mb-2 font-medium text-foreground">MVP help</p>
               <ul className="space-y-2">
-                <li>Funds live inside escrow cells on CKB, not in an admin balance.</li>
-                <li>Participant roles are matched by lock hash from the connected wallet.</li>
-                <li>The arbitrator is fixed at creation time, so the platform assigns one before the transaction is built.</li>
+                <li>Funds stay protected by the escrow until the deal closes.</li>
+                <li>Actions appear only for the wallet that belongs to the deal.</li>
+                <li>A reviewer is assigned before the escrow is created.</li>
               </ul>
             </div>
             <div className="rounded-[1.25rem] border border-dashed border-primary/20 bg-primary/5 p-4">
               <div className="mb-2 flex items-center gap-2 text-primary"><AlertTriangle className="h-4 w-4" /><strong>Status</strong></div>
               <p>{status}</p>
-              <p className="mt-2 text-xs">Workspace: {workspaceStatus}</p>
+              <p className="mt-2 text-xs">Workspace status: {workspaceStatus}</p>
               {lastTxHash ? (
                 <div className="mt-3 flex flex-col gap-3">
                   <p className="break-all text-xs">Last transaction: {lastTxHash}</p>

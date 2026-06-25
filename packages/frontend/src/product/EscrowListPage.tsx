@@ -13,7 +13,7 @@ import {
   toLiveProductEscrow,
   type ProductEscrowHistoryBucket,
 } from "./contract";
-import { EscrowHistoryTable, EscrowGrid, HistoryEmptyState } from "./EscrowCollectionSections";
+import { EscrowLedgerTable, HistoryEmptyState } from "./EscrowCollectionSections";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
 const HISTORY_TABS: Array<{ id: ProductEscrowHistoryBucket; label: string; description: string }> = [
@@ -84,15 +84,15 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
                 Escrow history that reads like a clean wallet ledger.
               </h1>
               <p className="max-w-[68ch] text-base leading-8 text-muted-foreground md:text-lg">
-                Active deals stay separate from completed settlement history. This page only shows escrows where the connected wallet is buyer, seller, or arbitrator; public view-only discovery remains in Studio.
+                Active deals stay separate from completed receipts. This page only shows escrows where the connected wallet is buyer, seller, or arbitrator.
               </p>
             </div>
 
             <div className="grid gap-3 md:grid-cols-3">
               {[
-                { label: "Active", value: activeEscrows.length, body: "Open state machine work." },
-                { label: "Past", value: pastEscrows.length, body: "Closed escrow receipts." },
-                { label: "Matched", value: participantEscrows.length, body: "Wallet participant records." },
+                { label: "Active", value: activeEscrows.length, body: "Open deals." },
+                { label: "Past", value: pastEscrows.length, body: "Closed receipts." },
+                { label: "Matched", value: participantEscrows.length, body: "Wallet records." },
               ].map((item) => (
                 <div key={item.label} className="rounded-[1.35rem] border border-border/80 bg-white/75 p-4 shadow-sm">
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{item.label}</p>
@@ -124,7 +124,7 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
               Current workspace
             </CardTitle>
             <CardDescription>
-              Wallet and network controls in the navbar determine which participant history appears here.
+              Wallet and network controls in the navbar decide which escrow history appears here.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
@@ -152,7 +152,7 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
                 <strong className="text-foreground">Participant-first</strong>
               </div>
               <p className="leading-6">
-                View-only escrows are intentionally excluded from this product page to keep wallet history focused.
+                Only escrows connected to this wallet appear in the product ledger.
               </p>
             </div>
             {createdEscrowId ? (
@@ -167,7 +167,7 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
       {!deploymentReady ? (
         <Card>
           <CardContent className="p-6 text-sm leading-6 text-muted-foreground">
-            {network} deployment metadata is unavailable in this build, so wallet escrow history cannot be listed yet.
+            {network} is not ready for product escrow history yet. Switch networks or use Studio for setup.
           </CardContent>
         </Card>
       ) : escrowFetchError ? (
@@ -192,7 +192,7 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
       ) : !hasFetchedEscrows || isFetchingEscrows ? (
         <Card>
           <CardContent className="p-6 text-sm leading-6 text-muted-foreground">
-            Fetching live escrow cells and indexer-backed wallet history for the selected network.
+            Fetching active deals and saved receipt history for the selected network.
           </CardContent>
         </Card>
       ) : (
@@ -230,16 +230,27 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
           </div>
 
           {activeTab === "active" ? (
-            activeEscrows.length > 0 ? (
-              <EscrowGrid
-                title="Active Escrows"
-                body="Open participant escrows that can still move through delivery, dispute, release, refund, or resolution."
-                records={activeEscrows}
-                {...(createdEscrowId !== undefined ? { highlightedEscrowId: createdEscrowId } : {})}
-              />
-            ) : (
-              <HistoryEmptyState active />
-            )
+            <section className="space-y-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">Active Escrows</h2>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    Open deals that can still move through delivery, dispute, release, refund, or resolution.
+                  </p>
+                </div>
+              </div>
+              {activeEscrows.length > 0 ? (
+                <EscrowLedgerTable
+                  records={visibleRecords}
+                  emptyMessage="No active escrows were found for this wallet."
+                />
+              ) : (
+                <HistoryEmptyState active />
+              )}
+            </section>
           ) : (
             <section className="space-y-5">
               <div className="flex items-center gap-3">
@@ -254,7 +265,7 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
                 </div>
               </div>
               {pastEscrows.length > 0 ? (
-                <EscrowHistoryTable
+                <EscrowLedgerTable
                   records={visibleRecords}
                   emptyMessage="No past escrows were found for this wallet yet."
                 />
