@@ -452,7 +452,7 @@ describe("escrow history grouping", () => {
     ]);
   });
 
-  it("routes active live deduped records to their current spendable outpoint", () => {
+  it("routes active live deduped records to their clean current transaction hash", () => {
     const live = {
       ...record("Delivered", "buyer"),
       id: "current:1",
@@ -461,7 +461,8 @@ describe("escrow history grouping", () => {
       source: "live" as const,
     };
 
-    expect(productEscrowRouteId(live)).toBe("current:1");
+    expect(productEscrowRouteId(live)).toBe("current");
+    expect(encodeURIComponent(productEscrowRouteId(live))).not.toContain("%3A");
   });
 
   it("routes terminal indexed records to their stable history id", () => {

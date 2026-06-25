@@ -188,9 +188,13 @@ export function mergeProductEscrowRecords(
   return Array.from(merged.values());
 }
 
+function liveRouteTxHash(value: string): string {
+  return value.split(":")[0] ?? value;
+}
+
 export function productEscrowRouteId(escrow: ProductEscrowRecord): string {
   if (escrow.source === "live") {
-    return escrow.currentId ?? escrow.id;
+    return liveRouteTxHash(escrow.currentId ?? escrow.id);
   }
 
   return escrow.stableId ?? escrow.id;
