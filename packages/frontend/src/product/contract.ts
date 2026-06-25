@@ -188,6 +188,14 @@ export function mergeProductEscrowRecords(
   return Array.from(merged.values());
 }
 
+export function productEscrowRouteId(escrow: ProductEscrowRecord): string {
+  if (escrow.source === "live") {
+    return escrow.currentId ?? escrow.id;
+  }
+
+  return escrow.stableId ?? escrow.id;
+}
+
 export function primaryActionLabel(record: Pick<ProductEscrowRecord, "actions" | "state">): string {
   const enabledAction = record.actions.find((action) => action.enabled);
   if (enabledAction) {

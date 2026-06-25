@@ -5,7 +5,7 @@ import { ArrowRight, Clock3, ReceiptText } from "lucide-react";
 
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui";
 import type { ProductEscrowRecord } from "./contract";
-import { getEscrowHistoryBucket, primaryActionLabel } from "./contract";
+import { getEscrowHistoryBucket, primaryActionLabel, productEscrowRouteId } from "./contract";
 
 export function SectionHeader({ title, body }: { title: string; body: string }) {
   return (
@@ -16,10 +16,6 @@ export function SectionHeader({ title, body }: { title: string; body: string }) 
       </div>
     </div>
   );
-}
-
-function escrowRouteId(escrow: ProductEscrowRecord): string {
-  return escrow.stableId ?? (escrow.source === "live" ? escrow.id.split(":")[0] ?? escrow.id : escrow.id);
 }
 
 function StateBadge({ state }: { state: ProductEscrowRecord["state"] }) {
@@ -65,7 +61,7 @@ export function EscrowGrid({
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 xl:items-stretch">
           {records.map((escrow) => {
-            const routeId = escrowRouteId(escrow);
+            const routeId = productEscrowRouteId(escrow);
             const isHighlighted =
               highlightedEscrowId != null &&
               (highlightedEscrowId === escrow.id || highlightedEscrowId === routeId);
@@ -176,7 +172,7 @@ export function EscrowHistoryTable({
           </thead>
           <tbody className="divide-y divide-border/80">
             {records.map((escrow) => {
-              const routeId = escrowRouteId(escrow);
+              const routeId = productEscrowRouteId(escrow);
               const counterparty = escrow.viewerRole === "seller" ? escrow.buyerLabel : escrow.sellerLabel;
 
               return (
@@ -204,7 +200,7 @@ export function EscrowHistoryTable({
 
       <div className="grid gap-3 md:hidden">
         {records.map((escrow) => {
-          const routeId = escrowRouteId(escrow);
+          const routeId = productEscrowRouteId(escrow);
           const counterparty = escrow.viewerRole === "seller" ? escrow.buyerLabel : escrow.sellerLabel;
 
           return (

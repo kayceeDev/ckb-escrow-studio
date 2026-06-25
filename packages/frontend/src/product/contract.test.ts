@@ -12,6 +12,7 @@ import {
   closeEscrowRecordForAction,
   mergeProductEscrowRecords,
   primaryActionLabel,
+  productEscrowRouteId,
   toIndexedProductEscrow,
   type ProductEscrowRecord,
 } from "./contract";
@@ -451,7 +452,29 @@ describe("escrow history grouping", () => {
     ]);
   });
 
+  it("routes active live deduped records to their current spendable outpoint", () => {
+    const live = {
+      ...record("Delivered", "buyer"),
+      id: "current:1",
+      stableId: "origin:0",
+      currentId: "current:1",
+      source: "live" as const,
+    };
 
+    expect(productEscrowRouteId(live)).toBe("current:1");
+  });
+
+  it("routes terminal indexed records to their stable history id", () => {
+    const terminal = {
+      ...record("Completed", "buyer"),
+      id: "origin:0",
+      stableId: "origin:0",
+      currentId: null,
+      source: "indexed" as const,
+    };
+
+    expect(productEscrowRouteId(terminal)).toBe("origin:0");
+  });
 
   it("deduplicates live current cell against indexed origin record", () => {
     const indexed = {
