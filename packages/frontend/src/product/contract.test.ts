@@ -9,6 +9,7 @@ import {
   getEscrowHistoryBucket,
   getViewerRole,
   guidanceForEscrow,
+  indexedEscrowReceiptRouteId,
   closeEscrowRecordForAction,
   mergeProductEscrowRecords,
   primaryActionLabel,
@@ -463,6 +464,25 @@ describe("escrow history grouping", () => {
 
     expect(productEscrowRouteId(live)).toBe("current");
     expect(encodeURIComponent(productEscrowRouteId(live))).not.toContain("%3A");
+  });
+
+  it("returns indexed receipt route ids for terminal read-only redirects", () => {
+    const terminal = {
+      ...record("Cancelled", "buyer"),
+      id: "origin:0",
+      stableId: "origin:0",
+      currentId: null,
+      source: "indexed" as const,
+    };
+    const live = {
+      ...record("Delivered", "buyer"),
+      id: "current:1",
+      currentId: "current:1",
+      source: "live" as const,
+    };
+
+    expect(indexedEscrowReceiptRouteId(terminal)).toBe("origin:0");
+    expect(indexedEscrowReceiptRouteId(live)).toBeNull();
   });
 
   it("routes terminal indexed records to their stable history id", () => {

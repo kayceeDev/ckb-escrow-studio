@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import * as ccc from "@ckb-ccc/ccc";
 import { decodeEscrowData } from "@ckb-escrow/sdk";
@@ -28,6 +29,7 @@ import {
   ProductEscrowRecord,
   findLiveEscrowForRoute,
   getIndexedCurrentOutPointForRoute,
+  indexedEscrowReceiptRouteId,
   mergeProductEscrowRecords,
   toIndexedProductEscrow,
   toLiveProductEscrow,
@@ -171,6 +173,7 @@ async function buildEvidenceItems(input: {
 
 
 export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
+  const router = useRouter();
   const {
     network,
     walletState,
@@ -518,6 +521,13 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     });
 
     if (result.status === "updated") {
+      const receiptRouteId = input.expectedTerminal ? indexedEscrowReceiptRouteId(result.record) : null;
+      if (receiptRouteId) {
+        setStatus(`Escrow closed as ${result.record.state}. Opening indexed read-only receipt...`);
+        router.replace(`/escrows/${encodeURIComponent(receiptRouteId)}`);
+        return;
+      }
+
       setStatus(`Escrow updated to ${result.record.state}.`);
       return;
     }

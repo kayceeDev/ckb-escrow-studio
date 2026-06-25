@@ -200,6 +200,14 @@ export function productEscrowRouteId(escrow: ProductEscrowRecord): string {
   return escrow.stableId ?? escrow.id;
 }
 
+export function indexedEscrowReceiptRouteId(escrow: ProductEscrowRecord): string | null {
+  if (escrow.source !== "indexed") {
+    return null;
+  }
+
+  return escrow.stableId ?? escrow.id;
+}
+
 export function primaryActionLabel(record: Pick<ProductEscrowRecord, "actions" | "state">): string {
   const enabledAction = record.actions.find((action) => action.enabled);
   if (enabledAction) {
