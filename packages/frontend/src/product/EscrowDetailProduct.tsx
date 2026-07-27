@@ -668,7 +668,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   if (!deploymentReady) {
     return (
       <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
-        <Card>
+        <Card className="motion-card">
           <CardContent className="space-y-4 p-8">
             <p className="text-lg font-semibold">{network} deployment is unavailable</p>
             <p className="text-sm text-muted-foreground">
@@ -729,7 +729,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           <CardContent className="space-y-4 p-8">
             <p className="text-lg font-semibold">Escrow not found on this network</p>
             <p className="text-sm text-muted-foreground">
-              We refreshed live escrows and checked the indexer for {network}, but this `txHash:index` route was not present. Confirm the network and retry discovery before assuming the escrow is missing.
+              We refreshed live escrows and checked saved history for {network}, but this deal was not found. Confirm the selected network and try again.
             </p>
             <div className="flex flex-wrap gap-3">
               <Button onClick={() => void refreshEscrows()} disabled={isFetchingEscrows}>
@@ -747,7 +747,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-4 py-10 md:px-6">
+    <div className="premium-page mx-auto w-full max-w-[1240px] px-4 py-10 md:px-6">
       <div className="mb-8 flex flex-wrap items-center gap-3">
         <Badge variant={record.state === "Disputed" ? "destructive" : "success"}>{record.state}</Badge>
         <Badge variant="secondary">{record.viewerRole}</Badge>
@@ -759,7 +759,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           <Card>
             <CardHeader className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div className="space-y-2">
-                <CardTitle className="text-3xl">{record.title}</CardTitle>
+                <CardTitle className="text-3xl md:text-4xl">{record.title}</CardTitle>
                 <CardDescription>{record.description}</CardDescription>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -922,9 +922,9 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
 
           <Card>
             <CardHeader>
-              <CardTitle>Available actions</CardTitle>
+              <CardTitle>Next safe actions</CardTitle>
               <CardDescription>
-                The available next steps are based on this deal's current state and your connected wallet.
+                Only actions that match this deal stage and the connected wallet are available here.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -1044,8 +1044,8 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle>Timeline</CardTitle>
-              <CardDescription>The deal moves through these steps from funding to close.</CardDescription>
+              <CardTitle>Deal timeline</CardTitle>
+              <CardDescription>A simple record of how this deal moves from funding to closure.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {record.timeline.map((step, index) => {

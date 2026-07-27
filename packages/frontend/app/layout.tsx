@@ -31,7 +31,7 @@ export default function RootLayout({
           <div className="relative flex min-h-screen flex-col overflow-x-hidden">
             <div className="absolute inset-x-0 top-0 -z-10 h-[28rem] bg-[radial-gradient(circle_at_top_left,rgba(30,122,70,0.18),transparent_34%),radial-gradient(circle_at_top_right,rgba(133,181,146,0.12),transparent_30%)]" />
 
-            <header className="sticky top-0 z-30 border-b border-border/80 bg-background/86 backdrop-blur-xl">
+            <header className="sticky top-0 z-30 border-b border-border/80 bg-background/88 shadow-[0_10px_34px_rgba(24,51,32,0.05)] backdrop-blur-xl">
               <div className="relative mx-auto flex min-h-16 w-full max-w-[1280px] items-center justify-between gap-3 px-4 py-3 md:px-6">
                 <Link href="/" className="flex min-w-0 shrink-0 items-center gap-3">
                   <Badge variant="success" className="whitespace-nowrap">CKB Escrow</Badge>
@@ -62,7 +62,7 @@ export default function RootLayout({
             <footer className="mt-12 border-t border-border/80 bg-background/82 backdrop-blur">
               <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 px-4 py-7 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between md:px-6">
                 <p>
-                  A calmer way to hold funds until work is delivered and accepted.
+                  Escrow for real deals between known parties, powered by CKB.
                 </p>
                 <div className="flex flex-wrap items-center gap-4">
                   <Link className="hover:text-foreground" href="/escrows">

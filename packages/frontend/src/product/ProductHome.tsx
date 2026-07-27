@@ -7,6 +7,7 @@ import {
   Clock3,
   RefreshCcw,
   ShieldCheck,
+  Sparkles,
   Wallet,
 } from "lucide-react";
 
@@ -44,9 +45,9 @@ export function ProductHome() {
   const showEmptyForNoRoleMatches = deploymentReady && walletState.activeSigner && hasFetchedEscrows && actorEscrows.length === 0 && !escrowFetchError;
 
   return (
-    <div className="mx-auto w-full max-w-[1360px] px-4 py-8 md:px-6 md:py-10 2xl:px-8">
+    <div className="premium-page mx-auto w-full max-w-[1360px] px-4 py-8 md:px-6 md:py-10 2xl:px-8">
       <header className="mb-10 grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.55fr)]">
-        <Card className="overflow-hidden border-primary/15 bg-[linear-gradient(135deg,rgba(255,252,244,0.98),rgba(234,248,238,0.94))]">
+        <Card className="hero-surface">
           <CardContent className="space-y-7 p-6 md:p-10 2xl:p-12">
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant="success">Protected payments</Badge>
@@ -56,10 +57,10 @@ export function ProductHome() {
 
             <div className="space-y-4">
               <h1 className="max-w-[14ch] font-serif text-4xl font-semibold leading-[0.98] tracking-tight text-balance md:text-6xl xl:text-[4.8rem]">
-                Escrow that feels calm from deposit to delivery.
+                The cleanest way to hold payment until delivery is real.
               </h1>
               <p className="max-w-[60ch] text-base leading-8 text-muted-foreground md:text-lg xl:text-[1.15rem] xl:leading-9">
-                Create a protected deal, invite the right wallet, and keep every next step obvious: deliver, release, dispute, refund, or close.
+                Create a protected deal for a known seller, fund it on CKB, and let each role see the next safe step without protocol noise.
               </p>
             </div>
 
@@ -69,7 +70,7 @@ export function ProductHome() {
                 { title: "Act by role", body: "Only the buyer, seller, or arbitrator sees the right next step." },
                 { title: "Close clearly", body: "Completed and cancelled escrows become receipts in your ledger." },
               ].map((item) => (
-                <div key={item.title} className="rounded-[1.5rem] border border-border bg-white/72 p-4 shadow-sm">
+                <div key={item.title} className="deal-step">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-primary/80">{item.title}</p>
                   <p className="text-sm leading-6 text-muted-foreground">{item.body}</p>
                 </div>
@@ -140,7 +141,7 @@ export function ProductHome() {
           { title: "Seller", value: String(sellerEscrows.length), body: "Deals this wallet is expected to fulfill." },
           { title: "Arbitrator", value: String(arbitratorEscrows.length), body: "Disputes assigned for final review." },
         ].map((item) => (
-          <Card key={item.title} className="bg-white/78">
+          <Card key={item.title} className="metric-card">
             <CardContent className="space-y-2 p-6">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{item.title}</p>
               <p className="text-3xl font-semibold text-foreground">{item.value}</p>
@@ -151,6 +152,14 @@ export function ProductHome() {
       </section>
 
       <section className="mb-10 space-y-5">
+        <div className="trust-strip mb-6 flex flex-col gap-3 px-5 py-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <Sparkles className="h-5 w-5 text-primary" />
+            <span><strong className="text-foreground">Wallet-aware workspace.</strong> Counts include indexed history; urgent cards stay focused on live actions.</span>
+          </div>
+          <Button asChild variant="outline" size="sm"><Link href="/escrows">View full ledger</Link></Button>
+        </div>
+
         <SectionHeader
           title="Needs your attention"
           body="A short list of live escrows where this wallet can move the deal forward right now. Open the ledger for the complete active and past history."

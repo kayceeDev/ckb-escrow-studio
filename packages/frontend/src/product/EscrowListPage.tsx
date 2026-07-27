@@ -69,9 +69,9 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
   const visibleRecords = activeTab === "active" ? activeEscrows : pastEscrows;
 
   return (
-    <div className="mx-auto w-full max-w-[1360px] px-4 py-8 md:px-6 md:py-10 2xl:px-8">
+    <div className="premium-page mx-auto w-full max-w-[1360px] px-4 py-8 md:px-6 md:py-10 2xl:px-8">
       <header className="mb-10 grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.55fr)]">
-        <Card className="overflow-hidden border-primary/15 bg-[linear-gradient(135deg,rgba(255,252,244,0.96),rgba(236,248,239,0.92))]">
+        <Card className="hero-surface">
           <CardContent className="space-y-7 p-6 md:p-10">
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant="success">Wallet History</Badge>
@@ -81,10 +81,10 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
 
             <div className="space-y-3">
               <h1 className="max-w-[12ch] font-serif text-4xl font-semibold leading-[0.98] tracking-tight text-foreground md:text-6xl">
-                Escrow history that reads like a clean wallet ledger.
+                A clean ledger for every escrow your wallet touched.
               </h1>
               <p className="max-w-[68ch] text-base leading-8 text-muted-foreground md:text-lg">
-                Active deals stay separate from completed receipts. This page only shows escrows where the connected wallet is buyer, seller, or arbitrator.
+                Active deals stay separate from closed receipts, with buyer, seller, and arbitrator context kept clear at a glance.
               </p>
             </div>
 
@@ -94,7 +94,7 @@ export function EscrowListPage({ createdEscrowId }: { createdEscrowId?: string |
                 { label: "Past", value: pastEscrows.length, body: "Closed receipts." },
                 { label: "Matched", value: participantEscrows.length, body: "Wallet records." },
               ].map((item) => (
-                <div key={item.label} className="rounded-[1.35rem] border border-border/80 bg-white/75 p-4 shadow-sm">
+                <div key={item.label} className="metric-card p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{item.label}</p>
                   <p className="mt-2 text-3xl font-semibold text-foreground">{item.value}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{item.body}</p>

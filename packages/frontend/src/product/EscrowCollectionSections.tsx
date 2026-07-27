@@ -117,9 +117,9 @@ export function EscrowLedgerTable({
 
   return (
     <div className="space-y-4">
-      <div className="hidden overflow-hidden rounded-[1.5rem] border border-border bg-card/92 shadow-[var(--shadow-soft)] backdrop-blur md:block">
+      <div className="hidden overflow-hidden rounded-[1.75rem] border border-border bg-card/95 shadow-[var(--shadow-soft)] backdrop-blur-xl md:block">
         <table className="w-full border-collapse text-left text-sm">
-          <thead className="bg-secondary/70 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <thead className="bg-[linear-gradient(90deg,rgba(232,243,223,0.9),rgba(255,253,247,0.85))] text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
             <tr>
               <th className="px-5 py-4">Escrow</th>
               <th className="px-5 py-4">Role</th>
@@ -137,7 +137,7 @@ export function EscrowLedgerTable({
               const counterparty = counterpartyFor(escrow);
 
               return (
-                <tr key={escrow.id} className="bg-white/68 transition hover:bg-accent/35">
+                <tr key={escrow.id} className="bg-white/72 transition hover:bg-accent/45">
                   <td className="max-w-[260px] px-5 py-4">
                     <p className="truncate font-medium text-foreground">{escrow.title}</p>
                     <p className="mt-1 truncate text-xs text-muted-foreground">{escrow.description}</p>
@@ -166,7 +166,7 @@ export function EscrowLedgerTable({
           const counterparty = counterpartyFor(escrow);
 
           return (
-            <Card key={escrow.id} className="overflow-hidden bg-white/82">
+            <Card key={escrow.id} className="overflow-hidden bg-white/86">
               <CardContent className="space-y-4 p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

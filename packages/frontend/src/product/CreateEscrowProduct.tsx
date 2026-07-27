@@ -238,7 +238,7 @@ export function CreateEscrowProduct() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-4 py-10 md:px-6">
+    <div className="premium-page mx-auto w-full max-w-[1240px] px-4 py-10 md:px-6">
       <div className="mb-8 flex flex-wrap items-center gap-3">
         <Badge variant="success">Create Escrow</Badge>
         <Badge variant="secondary">Buyer journey</Badge>
@@ -248,12 +248,21 @@ export function CreateEscrowProduct() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)] xl:items-start">
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">Create a New Escrow</CardTitle>
+            <CardTitle className="text-2xl">Create a protected escrow</CardTitle>
             <CardDescription>
-              Create a protected payment for a known seller. The app keeps the buyer flow simple and assigns dispute review automatically.
+              A guided buyer flow for known parties: add the seller, set the terms, review protection, then fund on CKB.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="grid gap-3 md:grid-cols-4">
+              {["Connect", "Terms", "Review", "Fund"].map((step, index) => (
+                <div key={step} className="deal-step">
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Step {index + 1}</p>
+                  <p className="mt-1 font-semibold text-foreground">{step}</p>
+                </div>
+              ))}
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <button
                 type="button"
@@ -273,7 +282,7 @@ export function CreateEscrowProduct() {
               </button>
             </div>
 
-            <div className="rounded-[1.5rem] border border-primary/20 bg-primary/8 p-4">
+            <div className="rounded-[1.5rem] border border-primary/20 bg-primary/8 p-4 shadow-sm">
               <div className="mb-2 flex items-center gap-2 text-primary">
                 <Info className="h-4 w-4" />
                 <span className="text-sm font-semibold">What happens next?</span>
@@ -349,9 +358,9 @@ export function CreateEscrowProduct() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Buyer Checklist</CardTitle>
+            <CardTitle>Funding checklist</CardTitle>
             <CardDescription>
-              Start with the buyer wallet, then seller and order details, then fund the escrow.
+              A quick review before the transaction is submitted.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
