@@ -10,6 +10,8 @@ import {
   type SaveArbitratorDecisionInput,
 } from "@ckb-escrow/indexer";
 
+import { verifyDisputeWriteAuth, type DisputeAuthProof } from "../../../../../src/server/dispute-auth";
+import { verifyDisputeTransactionHash } from "../../../../../src/server/dispute-tx-verifier";
 import { getEscrowIndexerStorage } from "../../../../../src/server/indexer-store";
 
 function badRequest(message: string) {
@@ -39,6 +41,13 @@ function requestedOutcome(value: unknown): "buyer" | "seller" {
     return value;
   }
   throw new Error("requestedOutcome must be buyer or seller");
+}
+
+function requiredAuth(value: unknown): DisputeAuthProof {
+  if (!value || typeof value !== "object") {
+    throw new Error("auth proof is required");
+  }
+  return value as DisputeAuthProof;
 }
 
 function evidenceItems(value: unknown): NonNullable<CreateDisputeCaseInput["evidence"]> {
@@ -83,26 +92,51 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const url = new URL(request.url);
     const network = parseNetwork(url.searchParams.get("network"));
     const { id } = await params;
+    const escrowId = decodeURIComponent(id);
     const body = (await request.json()) as Record<string, unknown>;
     const action = body.action;
+    const storage = getEscrowIndexerStorage();
 
     if (action === "create") {
-      const input: CreateDisputeCaseInput = {
-        escrowId: decodeURIComponent(id),
+      const openedByLockHash = requiredHex(body.openedByLockHash, "openedByLockHash");
+      await verifyDisputeWriteAuth({
         network,
-        disputeTxHash: requiredHex(body.disputeTxHash, "disputeTxHash"),
-        openedByLockHash: requiredHex(body.openedByLockHash, "openedByLockHash"),
+        escrowId,
+        action: "create",
+        lockHash: openedByLockHash,
+        proof: requiredAuth(body.auth),
+      });
+      const disputeTxHash = requiredHex(body.disputeTxHash, "disputeTxHash");
+      await verifyDisputeTransactionHash({
+        network,
+        storage,
+        escrowId,
+        txHash: disputeTxHash,
+        expectedAction: "Dispute",
+      });
+      const input: CreateDisputeCaseInput = {
+        escrowId,
+        network,
+        disputeTxHash,
+        openedByLockHash,
         requestedOutcome: requestedOutcome(body.requestedOutcome),
         reason: requiredString(body.reason, "reason"),
-        evidence: evidenceItems(body.evidence),
+        evidence: evidenceItems(body.evidence).map((item) => ({ ...item, submittedByLockHash: openedByLockHash })),
       };
-      return NextResponse.json(await createDisputeCaseInStorage(getEscrowIndexerStorage(), input));
+      return NextResponse.json(await createDisputeCaseInStorage(storage, input));
     }
 
     if (action === "addEvidence") {
       const submittedByLockHash = requiredHex(body.submittedByLockHash, "submittedByLockHash");
+      await verifyDisputeWriteAuth({
+        network,
+        escrowId,
+        action: "addEvidence",
+        lockHash: submittedByLockHash,
+        proof: requiredAuth(body.auth),
+      });
       const input: AddDisputeEvidenceInput = {
-        escrowId: decodeURIComponent(id),
+        escrowId,
         network,
         submittedByLockHash,
         evidence: evidenceItems(body.evidence).map((item) => ({
@@ -115,19 +149,36 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           contentHash: item.contentHash,
         })),
       };
-      return NextResponse.json(await addDisputeEvidenceToStorage(getEscrowIndexerStorage(), input));
+      return NextResponse.json(await addDisputeEvidenceToStorage(storage, input));
     }
 
     if (action === "decision") {
-      const input: SaveArbitratorDecisionInput = {
-        escrowId: decodeURIComponent(id),
+      const decidedByLockHash = requiredHex(body.decidedByLockHash, "decidedByLockHash");
+      await verifyDisputeWriteAuth({
         network,
-        outcome: requestedOutcome(body.outcome),
+        escrowId,
+        action: "decision",
+        lockHash: decidedByLockHash,
+        proof: requiredAuth(body.auth),
+      });
+      const outcome = requestedOutcome(body.outcome);
+      const resolutionTxHash = requiredHex(body.resolutionTxHash, "resolutionTxHash");
+      await verifyDisputeTransactionHash({
+        network,
+        storage,
+        escrowId,
+        txHash: resolutionTxHash,
+        expectedAction: outcome === "buyer" ? "ResolveToBuyer" : "ResolveToSeller",
+      });
+      const input: SaveArbitratorDecisionInput = {
+        escrowId,
+        network,
+        outcome,
         decisionNote: requiredString(body.decisionNote, "decisionNote"),
-        resolutionTxHash: requiredHex(body.resolutionTxHash, "resolutionTxHash"),
-        decidedByLockHash: requiredHex(body.decidedByLockHash, "decidedByLockHash"),
+        resolutionTxHash,
+        decidedByLockHash,
       };
-      return NextResponse.json(await saveArbitratorDecisionToStorage(getEscrowIndexerStorage(), input));
+      return NextResponse.json(await saveArbitratorDecisionToStorage(storage, input));
     }
 
     return badRequest("Unknown dispute action");

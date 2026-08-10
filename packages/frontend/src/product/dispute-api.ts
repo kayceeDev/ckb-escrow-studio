@@ -1,3 +1,4 @@
+import type * as ccc from "@ckb-ccc/ccc";
 import type {
   DisputeCaseRecord,
   DisputeEvidenceItem,
@@ -11,8 +12,28 @@ export type DraftEvidenceItem = Pick<
   "type" | "label" | "value" | "uri" | "mimeType" | "sizeBytes" | "contentHash" | "submittedByLockHash"
 >;
 
+export type ProductDisputeAuthAction = "create" | "addEvidence" | "decision";
+
+export interface ProductDisputeAuthProof {
+  nonce: string;
+  message: string;
+  signature: {
+    signature: string;
+    identity: string;
+    signType: string;
+  };
+  signerAddress: string;
+  signerLockHash: `0x${string}`;
+}
+
 interface DisputeCaseResponse {
   disputeCase: DisputeCaseRecord | null;
+}
+
+interface NonceResponse {
+  nonce: string;
+  expiresAt: string;
+  message: string;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -34,6 +55,13 @@ export async function hashEvidenceText(value: string): Promise<`0x${string}`> {
 
 export interface ProductDisputeClient {
   getDisputeCase(input: { network: CkbNetwork; escrowId: string }): Promise<DisputeCaseRecord | null>;
+  createAuthProof(input: {
+    network: CkbNetwork;
+    escrowId: string;
+    action: ProductDisputeAuthAction;
+    lockHash: `0x${string}`;
+    signer: ccc.Signer;
+  }): Promise<ProductDisputeAuthProof>;
   createDisputeCase(input: {
     network: CkbNetwork;
     escrowId: string;
@@ -42,12 +70,14 @@ export interface ProductDisputeClient {
     requestedOutcome: DisputeRequestedOutcome;
     reason: string;
     evidence: DraftEvidenceItem[];
+    auth: ProductDisputeAuthProof;
   }): Promise<DisputeCaseRecord | null>;
   addEvidence(input: {
     network: CkbNetwork;
     escrowId: string;
     submittedByLockHash: `0x${string}`;
     evidence: Omit<DraftEvidenceItem, "submittedByLockHash">[];
+    auth: ProductDisputeAuthProof;
   }): Promise<DisputeCaseRecord | null>;
   saveDecision(input: {
     network: CkbNetwork;
@@ -56,6 +86,7 @@ export interface ProductDisputeClient {
     decisionNote: string;
     resolutionTxHash: `0x${string}`;
     decidedByLockHash: `0x${string}`;
+    auth: ProductDisputeAuthProof;
   }): Promise<DisputeCaseRecord | null>;
 }
 
@@ -65,10 +96,37 @@ export function createProductDisputeClient(baseUrl = ""): ProductDisputeClient {
     return `${baseUrl}/api/escrows/${encodeURIComponent(escrowId)}/dispute?${params.toString()}`;
   }
 
+  function nonceUrl(input: {
+    network: CkbNetwork;
+    escrowId: string;
+    action: ProductDisputeAuthAction;
+    lockHash: `0x${string}`;
+  }): string {
+    const params = new URLSearchParams({
+      network: input.network,
+      escrowId: input.escrowId,
+      action: input.action,
+      lockHash: input.lockHash,
+    });
+    return `${baseUrl}/api/auth/nonce?${params.toString()}`;
+  }
+
   return {
     async getDisputeCase({ network, escrowId }) {
       const payload = await fetchJson<DisputeCaseResponse>(disputeUrl(network, escrowId));
       return payload.disputeCase;
+    },
+    async createAuthProof(input) {
+      const payload = await fetchJson<NonceResponse>(nonceUrl(input));
+      const signature = await input.signer.signMessage(payload.message);
+      const signerAddress = await input.signer.getRecommendedAddress();
+      return {
+        nonce: payload.nonce,
+        message: payload.message,
+        signature,
+        signerAddress,
+        signerLockHash: input.lockHash,
+      };
     },
     async createDisputeCase(input) {
       const payload = await fetchJson<DisputeCaseResponse>(disputeUrl(input.network, input.escrowId), {

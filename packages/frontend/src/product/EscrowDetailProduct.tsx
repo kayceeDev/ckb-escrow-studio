@@ -426,6 +426,10 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     if (!service || !liveItem || !record || !activeLockHash) {
       return;
     }
+    if (!walletState.activeSigner) {
+      setStatus("Connect the participant wallet before opening a dispute.");
+      return;
+    }
     if (!disputeReason.trim()) {
       setStatus("Add a dispute reason before opening arbitration.");
       return;
@@ -443,6 +447,14 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
 
     try {
       setBusyAction("Dispute");
+      setStatus("Signing dispute evidence authorization...");
+      const auth = await productDisputeClient.createAuthProof({
+        network,
+        escrowId,
+        action: "create",
+        lockHash: activeLockHash as `0x${string}`,
+        signer: walletState.activeSigner,
+      });
       setStatus("Submitting dispute transaction...");
       const txHash = await service.sendDispute(createEscrowInput(liveItem, deployment));
       setLastTxHash(txHash);
@@ -454,6 +466,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
         requestedOutcome: disputeOutcome,
         reason: disputeReason,
         evidence,
+        auth,
       });
       setDisputeCase(saved);
       setDisputePanelOpen(false);
@@ -468,7 +481,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   }
 
   async function submitEvidenceResponse() {
-    if (!activeLockHash) {
+    if (!activeLockHash || !walletState.activeSigner) {
       setStatus("Connect a participant wallet before submitting evidence.");
       return;
     }
@@ -484,11 +497,19 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     }
     try {
       setBusyAction("Dispute");
+      const auth = await productDisputeClient.createAuthProof({
+        network,
+        escrowId,
+        action: "addEvidence",
+        lockHash: activeLockHash as `0x${string}`,
+        signer: walletState.activeSigner,
+      });
       const saved = await productDisputeClient.addEvidence({
         network,
         escrowId,
         submittedByLockHash: activeLockHash as `0x${string}`,
         evidence: evidence.map(({ submittedByLockHash: _submittedByLockHash, ...item }) => item),
+        auth,
       });
       setDisputeCase(saved);
       setResponseStatement("");
@@ -588,6 +609,16 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
             escrowInput: cell,
             recipientLock: scriptLikeFromStored(buyerStoredScript),
           });
+          if (!walletState.activeSigner || !activeLockHash) {
+            throw new Error("Connect the arbitrator wallet before saving the dispute decision.");
+          }
+          const buyerDecisionAuth = await productDisputeClient.createAuthProof({
+            network,
+            escrowId,
+            action: "decision",
+            lockHash: activeLockHash as `0x${string}`,
+            signer: walletState.activeSigner,
+          });
           await productDisputeClient.saveDecision({
             network,
             escrowId,
@@ -595,6 +626,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
             decisionNote,
             resolutionTxHash: txHash as `0x${string}`,
             decidedByLockHash: activeLockHash as `0x${string}`,
+            auth: buyerDecisionAuth,
           }).then(setDisputeCase);
           break;
         case "ResolveToSeller":
@@ -611,6 +643,16 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
             escrowInput: cell,
             recipientLock: scriptLikeFromStored(sellerStoredScript),
           });
+          if (!walletState.activeSigner || !activeLockHash) {
+            throw new Error("Connect the arbitrator wallet before saving the dispute decision.");
+          }
+          const sellerDecisionAuth = await productDisputeClient.createAuthProof({
+            network,
+            escrowId,
+            action: "decision",
+            lockHash: activeLockHash as `0x${string}`,
+            signer: walletState.activeSigner,
+          });
           await productDisputeClient.saveDecision({
             network,
             escrowId,
@@ -618,6 +660,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
             decisionNote,
             resolutionTxHash: txHash as `0x${string}`,
             decidedByLockHash: activeLockHash as `0x${string}`,
+            auth: sellerDecisionAuth,
           }).then(setDisputeCase);
           break;
         default:
