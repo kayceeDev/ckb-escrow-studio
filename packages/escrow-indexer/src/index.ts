@@ -1,5 +1,6 @@
 export * from "./api.js";
 export * from "./auth.js";
+export * from "./canonical.js";
 export * from "./memory.js";
 export * from "./model.js";
 export * from "./postgres.js";

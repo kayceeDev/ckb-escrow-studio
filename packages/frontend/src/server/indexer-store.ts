@@ -1,10 +1,13 @@
 import * as ccc from "@ckb-ccc/ccc";
 import {
   MemoryEscrowIndexerStorage,
+  MemoryIndexerCoordinator,
   PostgresEscrowIndexerStorage,
-  scanEscrowHistory,
+  PostgresIndexerCoordinator,
+  syncCanonicalEscrowHistory,
   type EscrowIndexerStorage,
-  type EscrowScannerClient,
+  type CanonicalScannerClient,
+  type IndexerCoordinator,
   type IndexedEscrowNetwork,
 } from "@ckb-escrow/indexer";
 
@@ -20,6 +23,7 @@ export interface IndexerStorageRuntimeStatus {
 
 interface ManagedIndexerStorage {
   storage: EscrowIndexerStorage;
+  coordinator: IndexerCoordinator;
   status: IndexerStorageRuntimeStatus;
 }
 
@@ -41,6 +45,7 @@ function createManagedStorage(): ManagedIndexerStorage {
   if (!databaseUrl) {
     return {
       storage: new MemoryEscrowIndexerStorage(),
+      coordinator: new MemoryIndexerCoordinator(),
       status: {
         configuredStorage: "memory",
         activeStorage: "memory",
@@ -53,6 +58,7 @@ function createManagedStorage(): ManagedIndexerStorage {
   if (hasPlaceholderDatabaseHost(databaseUrl)) {
     return {
       storage: new MemoryEscrowIndexerStorage(),
+      coordinator: new MemoryIndexerCoordinator(),
       status: {
         configuredStorage: "postgres",
         activeStorage: "memory",
@@ -64,6 +70,7 @@ function createManagedStorage(): ManagedIndexerStorage {
 
   return {
     storage: new PostgresEscrowIndexerStorage({ connectionString: databaseUrl }),
+    coordinator: new PostgresIndexerCoordinator({ connectionString: databaseUrl }),
     status: {
       configuredStorage: "postgres",
       activeStorage: "postgres",
@@ -83,6 +90,7 @@ function degradeToMemory(error: unknown): EscrowIndexerStorage {
   const managed = getManagedStorage();
 
   managed.storage = new MemoryEscrowIndexerStorage();
+  managed.coordinator = new MemoryIndexerCoordinator();
   managed.status = {
     configuredStorage: managed.status.configuredStorage,
     activeStorage: "memory",
@@ -115,22 +123,29 @@ function typeScriptForNetwork(network: IndexedEscrowNetwork): ccc.ScriptLike | n
 }
 
 async function scanWithStorage(network: IndexedEscrowNetwork, typeScript: ccc.ScriptLike): Promise<void> {
+  const managed = getManagedStorage();
   try {
-    await scanEscrowHistory({
+    await syncCanonicalEscrowHistory({
       network,
-      client: NETWORK_CLIENTS[network] as unknown as EscrowScannerClient,
+      client: NETWORK_CLIENTS[network] as unknown as CanonicalScannerClient,
       deployment: { typeScript },
-      storage: getEscrowIndexerStorage(),
-      limit: Number(process.env.CKB_ESCROW_INDEXER_SCAN_LIMIT ?? "100"),
+      storage: managed.storage,
+      coordinator: managed.coordinator,
+      deploymentBlock: BigInt(process.env.CKB_ESCROW_TESTNET_DEPLOYMENT_BLOCK ?? "22272848"),
+      confirmations: BigInt(process.env.CKB_ESCROW_INDEXER_CONFIRMATIONS ?? "12"),
+      pageSize: Number(process.env.CKB_ESCROW_INDEXER_PAGE_SIZE ?? "100"),
     });
   } catch (error) {
     const fallbackStorage = degradeToMemory(error);
-    await scanEscrowHistory({
+    await syncCanonicalEscrowHistory({
       network,
-      client: NETWORK_CLIENTS[network] as unknown as EscrowScannerClient,
+      client: NETWORK_CLIENTS[network] as unknown as CanonicalScannerClient,
       deployment: { typeScript },
       storage: fallbackStorage,
-      limit: Number(process.env.CKB_ESCROW_INDEXER_SCAN_LIMIT ?? "100"),
+      coordinator: getManagedStorage().coordinator,
+      deploymentBlock: BigInt(process.env.CKB_ESCROW_TESTNET_DEPLOYMENT_BLOCK ?? "22272848"),
+      confirmations: BigInt(process.env.CKB_ESCROW_INDEXER_CONFIRMATIONS ?? "12"),
+      pageSize: Number(process.env.CKB_ESCROW_INDEXER_PAGE_SIZE ?? "100"),
     });
   }
 }

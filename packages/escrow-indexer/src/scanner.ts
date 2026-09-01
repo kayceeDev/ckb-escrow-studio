@@ -29,6 +29,8 @@ export interface ScanEscrowHistoryInput {
   deployment: EscrowScannerDeployment;
   storage: EscrowIndexerStorage;
   limit?: number;
+  minimumBlock?: bigint;
+  maximumBlock?: bigint;
 }
 
 interface DecodedOutput {
@@ -189,12 +191,19 @@ export async function scanEscrowHistory({
   deployment,
   storage,
   limit = 100,
+  minimumBlock,
+  maximumBlock,
 }: ScanEscrowHistoryInput): Promise<{ scannedTransactions: number; indexedEscrows: number }> {
   const typeScript = ccc.Script.from(deployment.typeScript);
   let scannedTransactions = 0;
   let indexedEscrows = 0;
 
   for await (const found of client.findTransactionsByType(typeScript, true, "asc", limit)) {
+    const foundBlock = found.blockNumber == null ? null : BigInt(found.blockNumber);
+    if ((minimumBlock != null && foundBlock != null && foundBlock < minimumBlock) ||
+        (maximumBlock != null && foundBlock != null && foundBlock > maximumBlock)) {
+      continue;
+    }
     const txHash = found.txHash;
     const response = await client.getTransactionWithHeader(txHash);
     const tx = response?.transaction.transaction;

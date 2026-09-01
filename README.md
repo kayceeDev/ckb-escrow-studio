@@ -119,7 +119,10 @@ Server-only variables:
 
 ```bash
 DATABASE_URL=postgres://user:password@host/db?sslmode=require
-CKB_ESCROW_INDEXER_SCAN_LIMIT=100
+CRON_SECRET=<random-value-at-least-16-characters>
+CKB_ESCROW_TESTNET_DEPLOYMENT_BLOCK=22272848
+CKB_ESCROW_INDEXER_CONFIRMATIONS=12
+CKB_ESCROW_INDEXER_PAGE_SIZE=100
 ```
 
 Do not prefix `DATABASE_URL` with `NEXT_PUBLIC_`. It contains credentials and must remain server-side.
