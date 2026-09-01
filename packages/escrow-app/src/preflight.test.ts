@@ -9,18 +9,18 @@ const outPoint = { txHash: `0x${"33".repeat(32)}`, index: 0n };
 const codeOutPoint = { txHash: `0x${"44".repeat(32)}`, index: 0n };
 const codeData = "0x010203" as const;
 
-function cell(data = "0xabcd") {
-  return ccc.Cell.from({
+function cell(data = "0xabcd"): ccc.CellLike {
+  return {
     outPoint,
     cellOutput: { capacity: 10_000_000_000n, lock, type },
     outputData: data,
-  });
+  };
 }
 
 function fakeClient(input: {
   genesis?: string;
-  escrow?: ccc.Cell;
-  code?: ccc.Cell;
+  escrow?: ccc.CellLike;
+  code?: ccc.CellLike;
 }) {
   return {
     async getHeaderByNumberNoCache() {
@@ -28,19 +28,19 @@ function fakeClient(input: {
     },
     async getCellLive(point: ccc.OutPointLike) {
       const normalized = ccc.OutPoint.from(point);
-      if (normalized.txHash === codeOutPoint.txHash) return input.code;
-      if (normalized.txHash === outPoint.txHash) return input.escrow;
+      if (normalized.txHash === codeOutPoint.txHash) return input.code ? ccc.Cell.from(input.code) : undefined;
+      if (normalized.txHash === outPoint.txHash) return input.escrow ? ccc.Cell.from(input.escrow) : undefined;
       return undefined;
     },
   };
 }
 
-function codeCell() {
-  return ccc.Cell.from({
+function codeCell(): ccc.CellLike {
+  return {
     outPoint: codeOutPoint,
     cellOutput: { capacity: 10_000_000_000n, lock, type: null },
     outputData: codeData,
-  });
+  };
 }
 
 describe("escrow preflight", () => {

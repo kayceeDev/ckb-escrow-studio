@@ -18,6 +18,18 @@ import { getEscrowIndexerStorage } from "../../../../../src/server/indexer-store
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
 }
+function disputeError(message: string) {
+  if (/required|signature is invalid/i.test(message)) {
+    return NextResponse.json({ error: message, code: "authorization_failed" }, { status: 401 });
+  }
+  if (/does not match.*wallet|not supported for dispute evidence/i.test(message)) {
+    return NextResponse.json({ error: message, code: "wallet_not_authorized" }, { status: 403 });
+  }
+  if (/already been used|not committed yet/i.test(message)) {
+    return NextResponse.json({ error: message, code: "authorization_conflict" }, { status: 409 });
+  }
+  return NextResponse.json({ error: message, code: "invalid_dispute_write" }, { status: 422 });
+}
 
 function isHex(value: unknown): value is `0x${string}` {
   return typeof value === "string" && /^0x[0-9a-fA-F]*$/.test(value);
@@ -190,6 +202,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (error instanceof DisputeAuthUnavailableError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
-    return badRequest(error instanceof Error ? error.message : String(error));
+    return disputeError(error instanceof Error ? error.message : String(error));
   }
 }
