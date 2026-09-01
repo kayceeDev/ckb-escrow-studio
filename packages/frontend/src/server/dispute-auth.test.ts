@@ -1,13 +1,10 @@
 import * as ccc from "@ckb-ccc/ccc";
+import { MemoryDisputeAuthNonceStore } from "@ckb-escrow/indexer";
 import { encodeEscrowActionHex } from "@ckb-escrow/sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { NETWORK_CLIENTS } from "../studio";
-import {
-  __resetDisputeAuthNoncesForTests,
-  issueDisputeAuthNonce,
-  verifyDisputeWriteAuth,
-} from "./dispute-auth";
+import { issueDisputeAuthNonce, verifyDisputeWriteAuth } from "./dispute-auth";
 import { verifyDisputeTransactionHash } from "./dispute-tx-verifier";
 
 const escrowId = `0x${"aa".repeat(32)}:0`;
@@ -18,14 +15,11 @@ function witness(action: Parameters<typeof encodeEscrowActionHex>[0]): ccc.Hex {
   return ccc.hexFrom(ccc.WitnessArgs.from({ inputType: encodeEscrowActionHex(action) }).toBytes());
 }
 
-async function ckbProof(action: "create" | "addEvidence" | "decision" = "create") {
-  const signer = new ccc.SignerCkbPrivateKey(
-    NETWORK_CLIENTS.testnet,
-    `0x${"11".repeat(32)}`,
-  );
+async function ckbProof(store: MemoryDisputeAuthNonceStore, action: "create" | "addEvidence" | "decision" = "create") {
+  const signer = new ccc.SignerCkbPrivateKey(NETWORK_CLIENTS.testnet, `0x${"11".repeat(32)}`);
   const address = await signer.getRecommendedAddressObj();
   const lockHash = address.script.hash().toLowerCase() as `0x${string}`;
-  const nonce = issueDisputeAuthNonce({ network: "testnet", escrowId, action, lockHash });
+  const nonce = await issueDisputeAuthNonce(store, { network: "testnet", escrowId, action, lockHash });
   return {
     lockHash,
     proof: {
@@ -65,87 +59,113 @@ function storage() {
   };
 }
 
-function client(action: "Dispute" | "ResolveToBuyer" | "ResolveToSeller") {
+function client(action: "Dispute" | "ResolveToBuyer" | "ResolveToSeller", committed = true) {
   return {
     async getTransactionWithHeader() {
       return {
         transaction: {
+          blockNumber: committed ? 100n : null,
           transaction: {
-            inputs: [
-              { previousOutput: { txHash: currentTxHash, index: 1n } },
-            ],
+            inputs: [{ previousOutput: { txHash: currentTxHash, index: 1n } }],
             witnesses: [witness(action)],
           },
         },
+        header: committed ? { number: 100n } : null,
       };
     },
   };
 }
 
 describe("dispute write auth", () => {
-  beforeEach(() => __resetDisputeAuthNoncesForTests());
+  let store: MemoryDisputeAuthNonceStore;
+
+  beforeEach(() => {
+    store = new MemoryDisputeAuthNonceStore();
+  });
 
   it("rejects missing auth proof", async () => {
-    await expect(
-      verifyDisputeWriteAuth({
-        network: "testnet",
-        escrowId,
-        action: "create",
-        lockHash: `0x${"11".repeat(32)}`,
-        proof: null,
-      }),
-    ).rejects.toThrow(/authorization is required/);
+    await expect(verifyDisputeWriteAuth({
+      store,
+      network: "testnet",
+      escrowId,
+      action: "create",
+      lockHash: `0x${"11".repeat(32)}`,
+      proof: null,
+    })).rejects.toThrow(/authorization is required/);
   });
 
   it("accepts a signed CKB nonce and rejects replay", async () => {
-    const { lockHash, proof } = await ckbProof("addEvidence");
+    const { lockHash, proof } = await ckbProof(store, "addEvidence");
+    await expect(verifyDisputeWriteAuth({ store, network: "testnet", escrowId, action: "addEvidence", lockHash, proof })).resolves.toBeUndefined();
+    await expect(verifyDisputeWriteAuth({ store, network: "testnet", escrowId, action: "addEvidence", lockHash, proof })).rejects.toThrow(/already been used/);
+  });
 
-    await expect(
-      verifyDisputeWriteAuth({ network: "testnet", escrowId, action: "addEvidence", lockHash, proof }),
-    ).resolves.toBeUndefined();
-    await expect(
-      verifyDisputeWriteAuth({ network: "testnet", escrowId, action: "addEvidence", lockHash, proof }),
-    ).rejects.toThrow(/already been used/);
+  it("allows exactly one concurrent nonce consumer", async () => {
+    const { lockHash, proof } = await ckbProof(store, "addEvidence");
+    const results = await Promise.allSettled([
+      verifyDisputeWriteAuth({ store, network: "testnet", escrowId, action: "addEvidence", lockHash, proof }),
+      verifyDisputeWriteAuth({ store, network: "testnet", escrowId, action: "addEvidence", lockHash, proof }),
+    ]);
+    expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(({ status }) => status === "rejected")).toHaveLength(1);
+  });
+
+  it("rejects unsupported wallet signature families", async () => {
+    const { lockHash, proof } = await ckbProof(store);
+    await expect(verifyDisputeWriteAuth({
+      store,
+      network: "testnet",
+      escrowId,
+      action: "create",
+      lockHash,
+      proof: { ...proof, signature: { ...proof.signature, signType: ccc.SignerSignType.JoyId } },
+    })).rejects.toThrow(/not supported/);
   });
 
   it("rejects tampered messages", async () => {
-    const { lockHash, proof } = await ckbProof("create");
-    await expect(
-      verifyDisputeWriteAuth({
-        network: "testnet",
-        escrowId,
-        action: "create",
-        lockHash,
-        proof: { ...proof, message: `${proof.message}\ntampered=true` },
-      }),
-    ).rejects.toThrow(/message does not match/);
+    const { lockHash, proof } = await ckbProof(store);
+    await expect(verifyDisputeWriteAuth({
+      store,
+      network: "testnet",
+      escrowId,
+      action: "create",
+      lockHash,
+      proof: { ...proof, message: `${proof.message}\ntampered=true` },
+    })).rejects.toThrow(/message does not match/);
   });
 });
 
 describe("dispute tx verification", () => {
-  it("accepts a tx consuming the current escrow cell with the expected action", async () => {
-    await expect(
-      verifyDisputeTransactionHash({
-        network: "testnet",
-        storage: storage() as never,
-        escrowId,
-        txHash,
-        expectedAction: "Dispute",
-        client: client("Dispute") as never,
-      }),
-    ).resolves.toBeUndefined();
+  it("accepts a committed tx consuming the current escrow cell with the expected action", async () => {
+    await expect(verifyDisputeTransactionHash({
+      network: "testnet",
+      storage: storage() as never,
+      escrowId,
+      txHash,
+      expectedAction: "Dispute",
+      client: client("Dispute") as never,
+    })).resolves.toBeUndefined();
+  });
+
+  it("rejects an uncommitted transaction", async () => {
+    await expect(verifyDisputeTransactionHash({
+      network: "testnet",
+      storage: storage() as never,
+      escrowId,
+      txHash,
+      expectedAction: "Dispute",
+      client: client("Dispute", false) as never,
+    })).rejects.toThrow(/not committed/);
   });
 
   it("rejects a tx whose witness action does not match", async () => {
-    await expect(
-      verifyDisputeTransactionHash({
-        network: "testnet",
-        storage: storage() as never,
-        escrowId,
-        txHash,
-        expectedAction: "ResolveToBuyer",
-        client: client("ResolveToSeller") as never,
-      }),
-    ).rejects.toThrow(/does not match ResolveToBuyer/);
+    await expect(verifyDisputeTransactionHash({
+      network: "testnet",
+      storage: storage() as never,
+      escrowId,
+      txHash,
+      expectedAction: "ResolveToBuyer",
+      client: client("ResolveToSeller") as never,
+    })).rejects.toThrow(/does not match ResolveToBuyer/);
   });
 });

@@ -37,6 +37,7 @@ import {
   type ProductArbitratorConfig,
 } from "../config/deployments";
 import { createExplorerTxUrl, makeEscrowLock } from "../studio";
+import { isProductDisputeSignerSupported } from "./dispute-api";
 import { storedScriptFromScriptLike } from "./registry";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
@@ -92,6 +93,7 @@ export function CreateEscrowProduct() {
     [arbitratorPool, network],
   );
   const assignedArbitratorLabel = useAssignedArbitratorLabel(assignedArbitrator);
+  const disputeEvidenceSupported = !walletState.activeSigner || isProductDisputeSignerSupported(walletState.activeSigner);
 
   useEffect(() => {
     async function assignArbitrator() {
@@ -307,6 +309,11 @@ export function CreateEscrowProduct() {
               <p className="text-sm leading-6 text-muted-foreground">
                 Use the wallet control in the navbar to select the buyer wallet. Buyers do not need to manage technical setup in this flow.
               </p>
+              {!disputeEvidenceSupported ? (
+                <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  This wallet can sign escrow transactions, but authenticated dispute evidence is not supported for its signature type yet.
+                </p>
+              ) : null}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">

@@ -11,6 +11,7 @@ import {
 } from "@ckb-escrow/indexer";
 
 import { verifyDisputeWriteAuth, type DisputeAuthProof } from "../../../../../src/server/dispute-auth";
+import { DisputeAuthUnavailableError, getDisputeAuthNonceStore } from "../../../../../src/server/dispute-auth-store";
 import { verifyDisputeTransactionHash } from "../../../../../src/server/dispute-tx-verifier";
 import { getEscrowIndexerStorage } from "../../../../../src/server/indexer-store";
 
@@ -100,6 +101,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (action === "create") {
       const openedByLockHash = requiredHex(body.openedByLockHash, "openedByLockHash");
       await verifyDisputeWriteAuth({
+        store: getDisputeAuthNonceStore(),
         network,
         escrowId,
         action: "create",
@@ -129,6 +131,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (action === "addEvidence") {
       const submittedByLockHash = requiredHex(body.submittedByLockHash, "submittedByLockHash");
       await verifyDisputeWriteAuth({
+        store: getDisputeAuthNonceStore(),
         network,
         escrowId,
         action: "addEvidence",
@@ -155,6 +158,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (action === "decision") {
       const decidedByLockHash = requiredHex(body.decidedByLockHash, "decidedByLockHash");
       await verifyDisputeWriteAuth({
+        store: getDisputeAuthNonceStore(),
         network,
         escrowId,
         action: "decision",
@@ -183,6 +187,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     return badRequest("Unknown dispute action");
   } catch (error) {
+    if (error instanceof DisputeAuthUnavailableError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     return badRequest(error instanceof Error ? error.message : String(error));
   }
 }

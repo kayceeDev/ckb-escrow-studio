@@ -1,4 +1,4 @@
-import type * as ccc from "@ckb-ccc/ccc";
+import * as ccc from "@ckb-ccc/ccc";
 import type {
   DisputeCaseRecord,
   DisputeEvidenceItem,
@@ -13,6 +13,17 @@ export type DraftEvidenceItem = Pick<
 >;
 
 export type ProductDisputeAuthAction = "create" | "addEvidence" | "decision";
+const SUPPORTED_DISPUTE_SIGN_TYPES = new Set<ccc.SignerSignType>([
+  ccc.SignerSignType.CkbSecp256k1,
+  ccc.SignerSignType.EvmPersonal,
+  ccc.SignerSignType.BtcEcdsa,
+]);
+
+export function isProductDisputeSignerSupported(
+  signer: Pick<ccc.Signer, "signType"> | null | undefined,
+): boolean {
+  return Boolean(signer && SUPPORTED_DISPUTE_SIGN_TYPES.has(signer.signType));
+}
 
 export interface ProductDisputeAuthProof {
   nonce: string;
@@ -96,28 +107,20 @@ export function createProductDisputeClient(baseUrl = ""): ProductDisputeClient {
     return `${baseUrl}/api/escrows/${encodeURIComponent(escrowId)}/dispute?${params.toString()}`;
   }
 
-  function nonceUrl(input: {
-    network: CkbNetwork;
-    escrowId: string;
-    action: ProductDisputeAuthAction;
-    lockHash: `0x${string}`;
-  }): string {
-    const params = new URLSearchParams({
-      network: input.network,
-      escrowId: input.escrowId,
-      action: input.action,
-      lockHash: input.lockHash,
-    });
-    return `${baseUrl}/api/auth/nonce?${params.toString()}`;
-  }
-
   return {
     async getDisputeCase({ network, escrowId }) {
       const payload = await fetchJson<DisputeCaseResponse>(disputeUrl(network, escrowId));
       return payload.disputeCase;
     },
     async createAuthProof(input) {
-      const payload = await fetchJson<NonceResponse>(nonceUrl(input));
+      if (!isProductDisputeSignerSupported(input.signer)) {
+        throw new Error(`This wallet signature type (${input.signer.signType}) is not supported for dispute evidence yet.`);
+      }
+      const payload = await fetchJson<NonceResponse>(`${baseUrl}/api/auth/nonce`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ network: input.network, escrowId: input.escrowId, action: input.action, lockHash: input.lockHash }),
+      });
       const signature = await input.signer.signMessage(payload.message);
       const signerAddress = await input.signer.getRecommendedAddress();
       return {

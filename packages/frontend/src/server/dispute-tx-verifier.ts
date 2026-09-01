@@ -52,6 +52,9 @@ export async function verifyDisputeTransactionHash(input: {
   if (!tx) {
     throw new Error("Submitted dispute transaction hash was not found on chain");
   }
+  if (response.transaction.blockNumber == null || !response.header) {
+    throw new Error("Submitted dispute transaction is not committed yet");
+  }
 
   const action = decodeEscrowActionFromWitnesses(tx.witnesses ?? []);
   if (action !== input.expectedAction) {
