@@ -1,7 +1,17 @@
 import { initialDeployment, isDeploymentReady, loadDeploymentForNetwork } from "../studio";
 import type { CkbNetwork, DeploymentFormState } from "../types";
 
-type DeploymentEnvPrefix = "TESTNET" | "MAINNET";
+interface ProductPublicEnv {
+  typeCodeHash: string;
+  typeHashType: string;
+  typeArgs: string;
+  depTxHash: string;
+  depIndex: string;
+  lockCodeHash: string;
+  lockHashType: string;
+  lockArgs: string;
+  defaultArbitrator: string;
+}
 
 export interface ProductArbitratorConfig {
   id: string;
@@ -23,12 +33,12 @@ export interface ProductArbitratorSelectionInput {
 
 const STATIC_DEPLOYMENTS: Record<CkbNetwork, DeploymentFormState> = {
   testnet: {
-    codeHash: "0x9a477688b4767d9cdbd0f526c25a9265171b63cdc72487452cd22fa92a255a8f",
+    codeHash: "0xfecca11f654402d119c2f2a88e33f86601715c7201d231c364b4960b63d74455",
     hashType: "data2",
     args: "0x",
-    depTxHash: "0x6a1bdcfd076a04bceb14cad8069952a04f17e57091d1ac27b32304127c3ffe28",
+    depTxHash: "0x7b3704ef45b6619e94fefb4cdd405828b0f7343ffcea379d10f90fa7cac768ff",
     depIndex: "0",
-    escrowLockCodeHash: "0x9a477688b4767d9cdbd0f526c25a9265171b63cdc72487452cd22fa92a255a8f",
+    escrowLockCodeHash: "0xfecca11f654402d119c2f2a88e33f86601715c7201d231c364b4960b63d74455",
     escrowLockHashType: "data2",
     escrowLockArgs: "0x",
   },
@@ -47,27 +57,43 @@ const STATIC_ARBITRATOR_POOLS: Record<CkbNetwork, ProductArbitratorConfig[]> = {
   mainnet: [],
 };
 
-const ENV_PREFIXES: Record<CkbNetwork, DeploymentEnvPrefix> = {
-  testnet: "TESTNET",
-  mainnet: "MAINNET",
+const PUBLIC_ENV: Record<CkbNetwork, ProductPublicEnv> = {
+  testnet: {
+    typeCodeHash: process.env.NEXT_PUBLIC_CKB_ESCROW_TESTNET_TYPE_CODE_HASH ?? "",
+    typeHashType: process.env.NEXT_PUBLIC_CKB_ESCROW_TESTNET_TYPE_HASH_TYPE ?? "",
+    typeArgs: process.env.NEXT_PUBLIC_CKB_ESCROW_TESTNET_TYPE_ARGS ?? "",
+    depTxHash: process.env.NEXT_PUBLIC_CKB_ESCROW_TESTNET_DEP_TX_HASH ?? "",
+    depIndex: process.env.NEXT_PUBLIC_CKB_ESCROW_TESTNET_DEP_INDEX ?? "",
+    lockCodeHash: process.env.NEXT_PUBLIC_CKB_ESCROW_TESTNET_LOCK_CODE_HASH ?? "",
+    lockHashType: process.env.NEXT_PUBLIC_CKB_ESCROW_TESTNET_LOCK_HASH_TYPE ?? "",
+    lockArgs: process.env.NEXT_PUBLIC_CKB_ESCROW_TESTNET_LOCK_ARGS ?? "",
+    defaultArbitrator: process.env.NEXT_PUBLIC_CKB_ESCROW_TESTNET_DEFAULT_ARBITRATOR ?? "",
+  },
+  mainnet: {
+    typeCodeHash: process.env.NEXT_PUBLIC_CKB_ESCROW_MAINNET_TYPE_CODE_HASH ?? "",
+    typeHashType: process.env.NEXT_PUBLIC_CKB_ESCROW_MAINNET_TYPE_HASH_TYPE ?? "",
+    typeArgs: process.env.NEXT_PUBLIC_CKB_ESCROW_MAINNET_TYPE_ARGS ?? "",
+    depTxHash: process.env.NEXT_PUBLIC_CKB_ESCROW_MAINNET_DEP_TX_HASH ?? "",
+    depIndex: process.env.NEXT_PUBLIC_CKB_ESCROW_MAINNET_DEP_INDEX ?? "",
+    lockCodeHash: process.env.NEXT_PUBLIC_CKB_ESCROW_MAINNET_LOCK_CODE_HASH ?? "",
+    lockHashType: process.env.NEXT_PUBLIC_CKB_ESCROW_MAINNET_LOCK_HASH_TYPE ?? "",
+    lockArgs: process.env.NEXT_PUBLIC_CKB_ESCROW_MAINNET_LOCK_ARGS ?? "",
+    defaultArbitrator: process.env.NEXT_PUBLIC_CKB_ESCROW_MAINNET_DEFAULT_ARBITRATOR ?? "",
+  },
 };
 
-function envValue(prefix: DeploymentEnvPrefix, key: string): string {
-  return process.env[`NEXT_PUBLIC_CKB_ESCROW_${prefix}_${key}`] ?? "";
-}
-
 function deploymentFromEnv(network: CkbNetwork): DeploymentFormState {
-  const prefix = ENV_PREFIXES[network];
+  const env = PUBLIC_ENV[network];
 
   return {
-    codeHash: envValue(prefix, "TYPE_CODE_HASH"),
-    hashType: parseHashType(envValue(prefix, "TYPE_HASH_TYPE")),
-    args: envValue(prefix, "TYPE_ARGS") || "0x",
-    depTxHash: envValue(prefix, "DEP_TX_HASH"),
-    depIndex: envValue(prefix, "DEP_INDEX") || "0",
-    escrowLockCodeHash: envValue(prefix, "LOCK_CODE_HASH"),
-    escrowLockHashType: parseLockHashType(envValue(prefix, "LOCK_HASH_TYPE")),
-    escrowLockArgs: envValue(prefix, "LOCK_ARGS") || "0x",
+    codeHash: env.typeCodeHash,
+    hashType: parseHashType(env.typeHashType),
+    args: env.typeArgs || "0x",
+    depTxHash: env.depTxHash,
+    depIndex: env.depIndex || "0",
+    escrowLockCodeHash: env.lockCodeHash,
+    escrowLockHashType: parseLockHashType(env.lockHashType),
+    escrowLockArgs: env.lockArgs || "0x",
   };
 }
 
@@ -93,7 +119,7 @@ function hasStoredDeploymentOverride(network: CkbNetwork): boolean {
 }
 
 function defaultArbitratorFromEnv(network: CkbNetwork): string {
-  return envValue(ENV_PREFIXES[network], "DEFAULT_ARBITRATOR");
+  return PUBLIC_ENV[network].defaultArbitrator;
 }
 
 function envArbitratorPool(network: CkbNetwork): ProductArbitratorConfig[] {
