@@ -17,14 +17,17 @@ import type {
   EscrowServiceRefundParams,
   EscrowServiceResolveParams,
 } from "./types.js";
+import { runEscrowPreflight } from "./preflight.js";
 
 export class EscrowService {
   readonly deployment: EscrowDeployment;
   readonly signer: ccc.Signer;
+  readonly client: ccc.Client;
 
   constructor(options: EscrowServiceOptions) {
     this.deployment = options.deployment;
     this.signer = options.signer;
+    this.client = options.client ?? options.signer.client;
   }
 
   private async currentSignerLock(): Promise<ccc.Script> {
@@ -59,12 +62,19 @@ export class EscrowService {
   private async finalizeAndSend(
     tx: ccc.Transaction,
     feeRate?: ccc.NumLike,
+    escrowInput?: ccc.CellLike,
   ): Promise<ccc.Hex> {
     await completeFeeBySigner(
       tx,
       this.signer,
       feeRate === undefined ? undefined : { feeRate },
     );
+    await runEscrowPreflight({
+      signer: this.signer,
+      client: this.client,
+      deployment: this.deployment,
+      ...(escrowInput ? { escrowInput } : {}),
+    });
     return this.signer.sendTransaction(tx as unknown as ccc.TransactionLike);
   }
 
@@ -83,6 +93,7 @@ export class EscrowService {
       context,
       feeRate === undefined ? undefined : { feeRate },
     );
+    await runEscrowPreflight({ signer: this.signer, client: this.client, deployment: this.deployment, escrowInput: context.escrowInput });
     return this.signer.sendTransaction(tx as unknown as ccc.TransactionLike);
   }
 
@@ -119,7 +130,7 @@ export class EscrowService {
     feeRate?: ccc.NumLike,
   ): Promise<ccc.Hex> {
     const tx = await this.buildDeliverWithSignerInput(escrowInput);
-    return this.finalizeAndSend(tx, feeRate);
+    return this.finalizeAndSend(tx, feeRate, escrowInput);
   }
 
   buildDispute(escrowInput: ccc.CellLike): ccc.Transaction {
@@ -142,7 +153,7 @@ export class EscrowService {
     feeRate?: ccc.NumLike,
   ): Promise<ccc.Hex> {
     const tx = await this.buildDisputeWithSignerInput(escrowInput);
-    return this.finalizeAndSend(tx, feeRate);
+    return this.finalizeAndSend(tx, feeRate, escrowInput);
   }
 
   async buildCancel(

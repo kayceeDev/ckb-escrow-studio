@@ -32,4 +32,5 @@ export interface EscrowServiceCompleteParams extends EscrowServiceActionBase {
 export interface EscrowServiceOptions {
   deployment: EscrowDeployment;
   signer: ccc.Signer;
+  client?: ccc.Client;
 }

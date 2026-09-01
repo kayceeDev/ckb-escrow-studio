@@ -334,9 +334,10 @@ export function useProductWorkspace() {
               cellDep: createCellDep(deployment),
             },
             signer: walletState.activeSigner,
+            client,
           })
         : null,
-    [deployment, walletState.activeSigner],
+    [client, deployment, walletState.activeSigner],
   );
 
   const connectSigner = useCallback(async (signer: ccc.Signer) => {
