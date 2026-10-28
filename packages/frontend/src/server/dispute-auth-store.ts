@@ -4,6 +4,8 @@ import {
   type DisputeAuthNonceStore,
 } from "@ckb-escrow/indexer";
 
+import { isProductionRuntime, resolveDatabaseUrl } from "./database-config";
+
 declare global {
   var __ckbEscrowDisputeAuthStore: DisputeAuthNonceStore | undefined;
 }
@@ -13,27 +15,21 @@ export class DisputeAuthUnavailableError extends Error {
   readonly code = "auth_storage_unavailable";
 }
 
-function hasPlaceholderHost(value: string): boolean {
-  try {
-    return new URL(value).hostname === "host";
-  } catch {
-    return true;
-  }
-}
-
 export function getDisputeAuthNonceStore(): DisputeAuthNonceStore {
   if (globalThis.__ckbEscrowDisputeAuthStore) {
     return globalThis.__ckbEscrowDisputeAuthStore;
   }
 
-  const databaseUrl = process.env.DATABASE_URL?.trim();
-  if (databaseUrl && !hasPlaceholderHost(databaseUrl)) {
-    globalThis.__ckbEscrowDisputeAuthStore = new PostgresDisputeAuthNonceStore({ connectionString: databaseUrl });
+  const database = resolveDatabaseUrl();
+  if (database.url) {
+    globalThis.__ckbEscrowDisputeAuthStore = new PostgresDisputeAuthNonceStore({ connectionString: database.url });
     return globalThis.__ckbEscrowDisputeAuthStore;
   }
 
-  if (process.env.NODE_ENV === "production") {
-    throw new DisputeAuthUnavailableError("PostgreSQL is required for dispute authorization in production");
+  if (isProductionRuntime()) {
+    throw new DisputeAuthUnavailableError(
+      database.error ?? "PostgreSQL is required for dispute authorization in production",
+    );
   }
 
   globalThis.__ckbEscrowDisputeAuthStore = new MemoryDisputeAuthNonceStore();

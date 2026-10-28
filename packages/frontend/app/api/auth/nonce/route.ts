@@ -3,7 +3,7 @@ import { parseNetwork, type IndexedEscrowRecord } from "@ckb-escrow/indexer";
 
 import { issueDisputeAuthNonce, type DisputeWriteAction } from "../../../../src/server/dispute-auth";
 import { DisputeAuthUnavailableError, getDisputeAuthNonceStore } from "../../../../src/server/dispute-auth-store";
-import { getEscrowIndexerStorage } from "../../../../src/server/indexer-store";
+import { getEscrowIndexerStorage, IndexerStorageUnavailableError } from "../../../../src/server/indexer-store";
 
 function response(message: string, code: string, status: number) {
   return NextResponse.json({ error: message, code }, { status });
@@ -54,6 +54,9 @@ export async function POST(request: Request) {
     }));
   } catch (error) {
     if (error instanceof DisputeAuthUnavailableError) {
+      return response(error.message, error.code, error.status);
+    }
+    if (error instanceof IndexerStorageUnavailableError) {
       return response(error.message, error.code, error.status);
     }
     return response(error instanceof Error ? error.message : String(error), "invalid_request", 422);

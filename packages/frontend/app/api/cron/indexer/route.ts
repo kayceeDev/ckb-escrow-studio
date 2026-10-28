@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { getIndexerStorageRuntimeStatus, syncEscrowIndexer } from "../../../../src/server/indexer-store";
+import {
+  getIndexerStorageRuntimeStatus,
+  IndexerStorageUnavailableError,
+  syncEscrowIndexer,
+} from "../../../../src/server/indexer-store";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +25,11 @@ export async function GET(request: Request) {
       storage: getIndexerStorageRuntimeStatus(),
     });
   } catch (error) {
+    const storageUnavailable = error instanceof IndexerStorageUnavailableError;
     return NextResponse.json({
       ok: false,
       error: error instanceof Error ? error.message : String(error),
-      code: "indexer_sync_failed",
-    }, { status: 500 });
+      code: storageUnavailable ? error.code : "indexer_sync_failed",
+    }, { status: storageUnavailable ? error.status : 500 });
   }
 }

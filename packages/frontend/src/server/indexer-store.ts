@@ -13,12 +13,23 @@ import {
 
 import { resolveProductDeployment } from "../config/deployments";
 import { isDeploymentReady, NETWORK_CLIENTS } from "../studio";
+import { isProductionRuntime, resolveDatabaseUrl } from "./database-config";
 
 export interface IndexerStorageRuntimeStatus {
   configuredStorage: "memory" | "postgres";
   activeStorage: "memory" | "postgres";
   degraded: boolean;
   error: string | null;
+}
+
+export class IndexerStorageUnavailableError extends Error {
+  readonly status = 503;
+  readonly code = "indexer_storage_unavailable";
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "IndexerStorageUnavailableError";
+  }
 }
 
 interface ManagedIndexerStorage {
@@ -32,45 +43,28 @@ declare global {
   var __ckbEscrowIndexerSyncs: Partial<Record<IndexedEscrowNetwork, Promise<void>>> | undefined;
 }
 
-function hasPlaceholderDatabaseHost(databaseUrl: string): boolean {
-  try {
-    return new URL(databaseUrl).hostname === "host";
-  } catch {
-    return false;
-  }
-}
-
 function createManagedStorage(): ManagedIndexerStorage {
-  const databaseUrl = process.env.DATABASE_URL?.trim();
-  if (!databaseUrl) {
+  const database = resolveDatabaseUrl();
+  if (!database.url) {
+    const message = database.error ?? "PostgreSQL is required for persistent escrow history in production.";
+    if (isProductionRuntime()) {
+      throw new IndexerStorageUnavailableError(message);
+    }
     return {
       storage: new MemoryEscrowIndexerStorage(),
       coordinator: new MemoryIndexerCoordinator(),
       status: {
-        configuredStorage: "memory",
+        configuredStorage: database.configured ? "postgres" : "memory",
         activeStorage: "memory",
-        degraded: false,
-        error: null,
-      },
-    };
-  }
-
-  if (hasPlaceholderDatabaseHost(databaseUrl)) {
-    return {
-      storage: new MemoryEscrowIndexerStorage(),
-      coordinator: new MemoryIndexerCoordinator(),
-      status: {
-        configuredStorage: "postgres",
-        activeStorage: "memory",
-        degraded: true,
-        error: "DATABASE_URL still uses the placeholder hostname 'host'. Replace it with your real Postgres hostname.",
+        degraded: database.configured,
+        error: database.error,
       },
     };
   }
 
   return {
-    storage: new PostgresEscrowIndexerStorage({ connectionString: databaseUrl }),
-    coordinator: new PostgresIndexerCoordinator({ connectionString: databaseUrl }),
+    storage: new PostgresEscrowIndexerStorage({ connectionString: database.url }),
+    coordinator: new PostgresIndexerCoordinator({ connectionString: database.url }),
     status: {
       configuredStorage: "postgres",
       activeStorage: "postgres",
@@ -89,13 +83,24 @@ function degradeToMemory(error: unknown): EscrowIndexerStorage {
   const message = error instanceof Error ? error.message : String(error);
   const managed = getManagedStorage();
 
+  if (isProductionRuntime()) {
+    const errorMessage = `Postgres indexer storage is unavailable: ${message}`;
+    managed.status = {
+      configuredStorage: managed.status.configuredStorage,
+      activeStorage: managed.status.activeStorage,
+      degraded: true,
+      error: errorMessage,
+    };
+    throw new IndexerStorageUnavailableError(errorMessage, { cause: error });
+  }
+
   managed.storage = new MemoryEscrowIndexerStorage();
   managed.coordinator = new MemoryIndexerCoordinator();
   managed.status = {
     configuredStorage: managed.status.configuredStorage,
     activeStorage: "memory",
     degraded: true,
-    error: `Postgres indexer storage is unavailable, using memory fallback: ${message}`,
+    error: `Postgres indexer storage is unavailable, using development memory fallback: ${message}`,
   };
 
   return managed.storage;

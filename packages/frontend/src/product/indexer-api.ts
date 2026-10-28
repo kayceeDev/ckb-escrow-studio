@@ -23,7 +23,8 @@ export interface ProductIndexerClient {
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
-    throw new Error(`Indexer API request failed with ${response.status}`);
+    const payload = await response.json().catch(() => null) as { error?: string } | null;
+    throw new Error(payload?.error ?? `Indexer API request failed with ${response.status}`);
   }
   return response.json() as Promise<T>;
 }

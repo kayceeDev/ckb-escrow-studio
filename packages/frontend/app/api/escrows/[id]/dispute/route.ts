@@ -13,7 +13,10 @@ import {
 import { verifyDisputeWriteAuth, type DisputeAuthProof } from "../../../../../src/server/dispute-auth";
 import { DisputeAuthUnavailableError, getDisputeAuthNonceStore } from "../../../../../src/server/dispute-auth-store";
 import { verifyDisputeTransactionHash } from "../../../../../src/server/dispute-tx-verifier";
-import { getEscrowIndexerStorage } from "../../../../../src/server/indexer-store";
+import {
+  getEscrowIndexerStorage,
+  IndexerStorageUnavailableError,
+} from "../../../../../src/server/indexer-store";
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
@@ -93,11 +96,18 @@ function evidenceItems(value: unknown): NonNullable<CreateDisputeCaseInput["evid
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const url = new URL(request.url);
-  const network = parseNetwork(url.searchParams.get("network"));
-  const { id } = await params;
-  const response = await getDisputeCaseFromStorage(getEscrowIndexerStorage(), network, decodeURIComponent(id));
-  return NextResponse.json(response);
+  try {
+    const url = new URL(request.url);
+    const network = parseNetwork(url.searchParams.get("network"));
+    const { id } = await params;
+    const response = await getDisputeCaseFromStorage(getEscrowIndexerStorage(), network, decodeURIComponent(id));
+    return NextResponse.json(response);
+  } catch (error) {
+    if (error instanceof IndexerStorageUnavailableError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    throw error;
+  }
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -200,6 +210,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return badRequest("Unknown dispute action");
   } catch (error) {
     if (error instanceof DisputeAuthUnavailableError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
+    if (error instanceof IndexerStorageUnavailableError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
     }
     return disputeError(error instanceof Error ? error.message : String(error));
