@@ -16,7 +16,7 @@ The reproduced contract binary hash matches the deployed output data hash.
 Latest automated run completed on 2026-10-28:
 
 - [x] Frontend monorepo typecheck
-- [x] Frontend monorepo tests: 108 tests passed
+- [x] Frontend monorepo tests: 111 tests passed
 - [x] Next.js production build
 - [x] Contract unit tests: 26 passed
 - [x] CKB-VM integration tests: 7 passed
@@ -47,6 +47,15 @@ CKB_ESCROW_INDEXER_PAGE_SIZE=100
 Trigger `/api/cron/indexer` with `Authorization: Bearer $CRON_SECRET` once after deployment and confirm a successful testnet sync.
 
 The status endpoint must report PostgreSQL storage, a finalized block at or above deployment block `22272848`, the canonical block hash, and no `lastError`. Production must return `503` instead of switching to memory if Postgres is unavailable.
+
+Observed on the hosted Vercel deployment on 2026-10-28:
+
+- storage: `postgres`
+- finalized checkpoint: `22888550`
+- checkpoint hash: `0x4c88379cf2bae9e4b74c247909d9f5c226badb43094f4085301b5c12ca8d4782`
+- rebuild count: `1`
+- last error: none
+- runtime: PostgreSQL configured and active, not degraded
 
 ## Real-Wallet Acceptance
 
