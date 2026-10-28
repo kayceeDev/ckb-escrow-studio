@@ -13,10 +13,10 @@ The reproduced contract binary hash matches the deployed output data hash.
 
 ## Automated Verification
 
-Completed on 2026-09-01:
+Latest automated run completed on 2026-10-28:
 
 - [x] Frontend monorepo typecheck
-- [x] Frontend monorepo tests: 99 tests passed
+- [x] Frontend monorepo tests: 108 tests passed
 - [x] Next.js production build
 - [x] Contract unit tests: 26 passed
 - [x] CKB-VM integration tests: 7 passed
@@ -26,6 +26,9 @@ Completed on 2026-09-01:
 - [x] Terminal payout bypass regression
 - [x] Persistent atomic dispute nonce tests
 - [x] Canonical checkpoint and reorganization detection tests
+- [x] Atomic canonical snapshot rollback tests
+- [x] Orphaned dispute/decision reconciliation with evidence preservation
+- [x] Vercel `POSTGRES_URL` resolution and production fail-closed tests
 - [x] Pre-sign network, CellDep, and live escrow tests
 
 ## Environment Gate
@@ -33,7 +36,8 @@ Completed on 2026-09-01:
 Before testing the deployed frontend, configure:
 
 ```bash
-DATABASE_URL=postgres://...
+# Vercel may provide POSTGRES_URL. DATABASE_URL is also supported and takes precedence.
+POSTGRES_URL=postgres://...
 CRON_SECRET=...
 CKB_ESCROW_TESTNET_DEPLOYMENT_BLOCK=22272848
 CKB_ESCROW_INDEXER_CONFIRMATIONS=12
@@ -41,6 +45,8 @@ CKB_ESCROW_INDEXER_PAGE_SIZE=100
 ```
 
 Trigger `/api/cron/indexer` with `Authorization: Bearer $CRON_SECRET` once after deployment and confirm a successful testnet sync.
+
+The status endpoint must report PostgreSQL storage, a finalized block at or above deployment block `22272848`, the canonical block hash, and no `lastError`. Production must return `503` instead of switching to memory if Postgres is unavailable.
 
 ## Real-Wallet Acceptance
 
@@ -65,6 +71,7 @@ Additional checks:
 - [ ] Explorer links match submitted transactions
 - [ ] Daily cron reports healthy PostgreSQL storage
 - [ ] A simulated checkpoint hash mismatch triggers a successful rebuild
+- [ ] An orphaned dispute or resolution is visibly marked while its evidence remains available
 
 ## Release Decision
 

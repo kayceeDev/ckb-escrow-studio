@@ -118,14 +118,16 @@ NEXT_PUBLIC_CKB_ESCROW_MAINNET_DEFAULT_ARBITRATOR=
 Server-only variables:
 
 ```bash
-DATABASE_URL=postgres://user:password@host/db?sslmode=require
+# Set either variable. DATABASE_URL takes precedence when both are present.
+DATABASE_URL=postgres://user:password@real-host/db?sslmode=require
+# POSTGRES_URL=postgres://user:password@real-host/db?sslmode=require
 CRON_SECRET=<random-value-at-least-16-characters>
 CKB_ESCROW_TESTNET_DEPLOYMENT_BLOCK=22272848
 CKB_ESCROW_INDEXER_CONFIRMATIONS=12
 CKB_ESCROW_INDEXER_PAGE_SIZE=100
 ```
 
-Do not prefix `DATABASE_URL` with `NEXT_PUBLIC_`. It contains credentials and must remain server-side.
+Vercel Marketplace integrations commonly provide `POSTGRES_URL`; the app accepts that variable directly. If you add your own connection string, use `DATABASE_URL`. Do not prefix either variable with `NEXT_PUBLIC_`: database credentials must remain server-side.
 
 ## Vercel Deployment
 
@@ -162,6 +164,10 @@ postgres://root:secret@postgres:3356/escrow-db?sslmode=disable
 ```
 
 Use the hosted provider connection string instead.
+
+Production is fail-closed: escrow history, dispute metadata, and nonce authorization return a structured `503` when persistent Postgres storage is missing or unavailable. The in-memory store is only a local development and test fallback.
+
+The scanner stores finalized block hashes and checks the last committed checkpoint before each run. A missing, invalid, or reorganized checkpoint causes a full rebuild from block `22272848`. The rebuilt chain snapshot and checkpoint are replaced in one PostgreSQL transaction. Off-chain evidence remains stored; dispute cases and decisions whose transactions disappeared are marked `orphaned` and resolution is paused in the product UI.
 
 ## Wallet and Network Notes
 
