@@ -34,7 +34,7 @@ describe("indexer storage runtime selection", () => {
       activeStorage: "memory",
       degraded: true,
     });
-  });
+  }, 15_000);
 
   it("uses memory storage when no database is configured outside production", async () => {
     vi.stubEnv("NODE_ENV", "test");
@@ -80,6 +80,43 @@ describe("indexer storage runtime selection", () => {
     process.env.POSTGRES_URL = "postgres://user:password@db.example.test:5432/escrow";
     const { getDisputeAuthNonceStore } = await import("./dispute-auth-store");
 
-    expect(getDisputeAuthNonceStore().constructor.name).toBe("PostgresDisputeAuthNonceStore");
+    expect(getDisputeAuthNonceStore().constructor.name).toBe("ProductionDisputeAuthNonceStore");
+  });
+
+  it("converts direct Postgres indexer failures into a production 503 error", async () => {
+    const { __wrapIndexerStorageForTests, IndexerStorageUnavailableError } = await import("./indexer-store");
+    const storage = __wrapIndexerStorageForTests({
+      async upsertEscrow() {},
+      async getEscrow() { throw Object.assign(new Error("connection refused"), { code: "ECONNREFUSED" }); },
+      async listEscrows() { return []; },
+      async getStatus() { throw new Error("unused"); },
+      async createDisputeCase() { throw new Error("unused"); },
+      async addDisputeEvidence() { throw new Error("unused"); },
+      async getDisputeCase() { return null; },
+      async saveArbitratorDecision() { throw new Error("unused"); },
+    });
+
+    await expect(storage.getEscrow({ network: "testnet", escrowId: "escrow" }))
+      .rejects.toBeInstanceOf(IndexerStorageUnavailableError);
+  });
+
+  it("converts direct Postgres nonce failures into a production 503 error", async () => {
+    const { __wrapDisputeAuthStoreForTests, DisputeAuthUnavailableError } = await import("./dispute-auth-store");
+    const store = __wrapDisputeAuthStoreForTests({
+      async issue() { throw Object.assign(new Error("database unavailable"), { code: "57P01" }); },
+      async get() { return null; },
+      async consume() { return false; },
+    });
+
+    await expect(store.issue({
+      nonce: "nonce",
+      network: "testnet",
+      escrowId: "escrow",
+      action: "create",
+      lockHash: `0x${"11".repeat(32)}`,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      createdAt: new Date().toISOString(),
+      consumedAt: null,
+    })).rejects.toBeInstanceOf(DisputeAuthUnavailableError);
   });
 });

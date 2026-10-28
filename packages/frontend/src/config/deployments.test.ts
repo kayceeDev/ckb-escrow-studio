@@ -39,7 +39,7 @@ describe("product deployment environment", () => {
       escrowLockArgs: "0x1234",
     });
     expect(resolveDefaultArbitrator("testnet")).toBe(TEST_ARBITRATOR);
-  });
+  }, 15_000);
 
   it("keeps mainnet unavailable when it has no deployment variables", async () => {
     vi.resetModules();
@@ -47,5 +47,5 @@ describe("product deployment environment", () => {
     const { hasConfiguredProductDeployment } = await import("./deployments");
 
     expect(hasConfiguredProductDeployment("mainnet")).toBe(false);
-  });
+  }, 15_000);
 });

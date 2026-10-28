@@ -48,3 +48,13 @@ export function resolveDatabaseUrl(
 export function isProductionRuntime(): boolean {
   return process.env.NODE_ENV === "production";
 }
+
+export function isDatabaseRuntimeError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+
+  const candidate = error as { code?: unknown; name?: unknown; severity?: unknown; message?: unknown };
+  if (candidate.name === "DatabaseError" || typeof candidate.severity === "string") return true;
+  if (typeof candidate.code === "string" && /^(?:[0-9A-Z]{5}|E[A-Z_]+)$/.test(candidate.code)) return true;
+
+  return typeof candidate.message === "string" && /(?:postgres|database|connection terminated|pool.*closed|timeout.*connect)/i.test(candidate.message);
+}

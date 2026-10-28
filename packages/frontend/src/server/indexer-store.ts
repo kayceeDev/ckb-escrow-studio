@@ -13,7 +13,7 @@ import {
 
 import { resolveProductDeployment } from "../config/deployments";
 import { isDeploymentReady, NETWORK_CLIENTS } from "../studio";
-import { isProductionRuntime, resolveDatabaseUrl } from "./database-config";
+import { isDatabaseRuntimeError, isProductionRuntime, resolveDatabaseUrl } from "./database-config";
 
 export interface IndexerStorageRuntimeStatus {
   configuredStorage: "memory" | "postgres";
@@ -36,6 +36,66 @@ interface ManagedIndexerStorage {
   storage: EscrowIndexerStorage;
   coordinator: IndexerCoordinator;
   status: IndexerStorageRuntimeStatus;
+}
+
+class ProductionEscrowIndexerStorage implements EscrowIndexerStorage {
+  constructor(private readonly storage: EscrowIndexerStorage) {}
+
+  private async run<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (isDatabaseRuntimeError(error)) {
+        throw new IndexerStorageUnavailableError(
+          `Postgres indexer storage is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+  }
+
+  upsertEscrow(record: Parameters<EscrowIndexerStorage["upsertEscrow"]>[0]) {
+    return this.run(() => this.storage.upsertEscrow(record));
+  }
+  getEscrow(query: Parameters<EscrowIndexerStorage["getEscrow"]>[0]) {
+    return this.run(() => this.storage.getEscrow(query));
+  }
+  listEscrows(query: Parameters<EscrowIndexerStorage["listEscrows"]>[0]) {
+    return this.run(() => this.storage.listEscrows(query));
+  }
+  getStatus(network: Parameters<EscrowIndexerStorage["getStatus"]>[0]) {
+    return this.run(() => this.storage.getStatus(network));
+  }
+  createDisputeCase(input: Parameters<EscrowIndexerStorage["createDisputeCase"]>[0]) {
+    return this.run(() => this.storage.createDisputeCase(input));
+  }
+  addDisputeEvidence(input: Parameters<EscrowIndexerStorage["addDisputeEvidence"]>[0]) {
+    return this.run(() => this.storage.addDisputeEvidence(input));
+  }
+  getDisputeCase(
+    network: Parameters<EscrowIndexerStorage["getDisputeCase"]>[0],
+    escrowId: Parameters<EscrowIndexerStorage["getDisputeCase"]>[1],
+  ) {
+    return this.run(() => this.storage.getDisputeCase(network, escrowId));
+  }
+  saveArbitratorDecision(input: Parameters<EscrowIndexerStorage["saveArbitratorDecision"]>[0]) {
+    return this.run(() => this.storage.saveArbitratorDecision(input));
+  }
+  replaceCanonicalSnapshot(
+    network: IndexedEscrowNetwork,
+    records: Parameters<NonNullable<EscrowIndexerStorage["replaceCanonicalSnapshot"]>>[1],
+    checkpoint: Parameters<NonNullable<EscrowIndexerStorage["replaceCanonicalSnapshot"]>>[2],
+  ) {
+    if (!this.storage.replaceCanonicalSnapshot) {
+      return Promise.reject(new Error("Indexer storage does not support canonical snapshot replacement"));
+    }
+    return this.run(() => this.storage.replaceCanonicalSnapshot!(network, records, checkpoint));
+  }
+}
+
+export function __wrapIndexerStorageForTests(storage: EscrowIndexerStorage): EscrowIndexerStorage {
+  return new ProductionEscrowIndexerStorage(storage);
 }
 
 declare global {
@@ -62,8 +122,9 @@ function createManagedStorage(): ManagedIndexerStorage {
     };
   }
 
+  const postgresStorage = new PostgresEscrowIndexerStorage({ connectionString: database.url });
   return {
-    storage: new PostgresEscrowIndexerStorage({ connectionString: database.url }),
+    storage: isProductionRuntime() ? new ProductionEscrowIndexerStorage(postgresStorage) : postgresStorage,
     coordinator: new PostgresIndexerCoordinator({ connectionString: database.url }),
     status: {
       configuredStorage: "postgres",
@@ -80,6 +141,9 @@ function getManagedStorage(): ManagedIndexerStorage {
 }
 
 function degradeToMemory(error: unknown): EscrowIndexerStorage {
+  if (error instanceof IndexerStorageUnavailableError) throw error;
+  if (!isDatabaseRuntimeError(error)) throw error;
+
   const message = error instanceof Error ? error.message : String(error);
   const managed = getManagedStorage();
 
