@@ -16,6 +16,7 @@ export type IndexedEscrowEventType =
 
 export type DisputeRequestedOutcome = "buyer" | "seller";
 export type DisputeCaseStatus = "open" | "resolved";
+export type DisputeChainStatus = "confirmed" | "orphaned";
 export type DisputeEvidenceType = "statement" | "link" | "file";
 
 export interface IndexedOutPoint {
@@ -30,6 +31,7 @@ export interface IndexedEscrowEvent {
   type: IndexedEscrowEventType;
   txHash: Hex;
   blockNumber: string | null;
+  blockHash: Hex | null;
   blockTimestamp: string | null;
   fromState: EscrowState | null;
   toState: EscrowState;
@@ -86,6 +88,8 @@ export interface ArbitratorDecision {
   evidenceBundleHash: Hex;
   resolutionTxHash: Hex;
   decidedByLockHash: Hex;
+  chainStatus: DisputeChainStatus;
+  orphanedAt: string | null;
   createdAt: string;
 }
 
@@ -98,6 +102,8 @@ export interface DisputeCaseRecord {
   requestedOutcome: DisputeRequestedOutcome;
   reason: string;
   status: DisputeCaseStatus;
+  chainStatus: DisputeChainStatus;
+  orphanedAt: string | null;
   evidenceBundleHash: Hex;
   createdAt: string;
   updatedAt: string;
@@ -110,7 +116,17 @@ export interface IndexerStatus {
   ready: boolean;
   storage: "memory" | "postgres";
   lastProcessedBlock: string | null;
+  lastProcessedBlockHash: Hex | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  rebuildCount: number;
   updatedAt: string;
+}
+
+export interface CanonicalSnapshotCheckpoint {
+  blockNumber: string;
+  blockHash: Hex;
+  rebuildCount: number;
 }
 
 export interface IndexedEscrowListQuery {
@@ -161,6 +177,11 @@ export interface EscrowIndexerStorage {
   addDisputeEvidence(input: AddDisputeEvidenceInput): Promise<DisputeCaseRecord>;
   getDisputeCase(network: IndexedEscrowNetwork, escrowId: string): Promise<DisputeCaseRecord | null>;
   saveArbitratorDecision(input: SaveArbitratorDecisionInput): Promise<DisputeCaseRecord>;
+  replaceCanonicalSnapshot?(
+    network: IndexedEscrowNetwork,
+    records: IndexedEscrowRecord[],
+    checkpoint: CanonicalSnapshotCheckpoint,
+  ): Promise<void>;
 }
 
 export interface CreateIndexedEscrowInput {

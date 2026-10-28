@@ -1,6 +1,7 @@
-import { Pool, type PoolClient, type PoolConfig } from "pg";
+import { Pool, type PoolConfig } from "pg";
 import type * as ccc from "@ckb-ccc/ccc";
 
+import { MemoryEscrowIndexerStorage } from "./memory.js";
 import { scanEscrowHistory, type EscrowScannerClient, type EscrowScannerDeployment } from "./scanner.js";
 import type { EscrowIndexerStorage, IndexedEscrowNetwork } from "./types.js";
 
@@ -17,7 +18,6 @@ export interface IndexerCoordinator {
   getCheckpoint(network: IndexedEscrowNetwork): Promise<CanonicalCheckpoint | null>;
   saveCheckpoint(network: IndexedEscrowNetwork, checkpoint: CanonicalCheckpoint): Promise<void>;
   saveError(network: IndexedEscrowNetwork, message: string): Promise<void>;
-  resetChainState(network: IndexedEscrowNetwork): Promise<void>;
 }
 
 export const CANONICAL_INDEXER_SCHEMA_SQL = `
@@ -30,8 +30,6 @@ alter table indexer_checkpoints add column if not exists rebuild_count integer n
 export class MemoryIndexerCoordinator implements IndexerCoordinator {
   private readonly checkpoints = new Map<IndexedEscrowNetwork, CanonicalCheckpoint>();
   private readonly locks = new Set<IndexedEscrowNetwork>();
-  constructor(private readonly reset?: (network: IndexedEscrowNetwork) => Promise<void>) {}
-
   async withLock<T>(network: IndexedEscrowNetwork, task: () => Promise<T>) {
     if (this.locks.has(network)) return { acquired: false };
     this.locks.add(network);
@@ -42,11 +40,6 @@ export class MemoryIndexerCoordinator implements IndexerCoordinator {
   async saveError(network: IndexedEscrowNetwork, message: string) {
     const current = this.checkpoints.get(network);
     if (current) this.checkpoints.set(network, { ...current, lastError: message });
-  }
-  async resetChainState(network: IndexedEscrowNetwork) {
-    await this.reset?.(network);
-    const current = this.checkpoints.get(network);
-    if (current) this.checkpoints.set(network, { ...current, rebuildCount: current.rebuildCount + 1 });
   }
 }
 
@@ -101,18 +94,6 @@ export class PostgresIndexerCoordinator implements IndexerCoordinator {
     await this.migrate();
     await this.pool.query("update indexer_checkpoints set last_error = $2, updated_at = now() where network = $1", [network, message]);
   }
-  async resetChainState(network: IndexedEscrowNetwork) {
-    await this.migrate();
-    const client: PoolClient = await this.pool.connect();
-    try {
-      await client.query("begin");
-      await client.query("delete from escrow_events where network = $1", [network]);
-      await client.query("delete from escrows where network = $1", [network]);
-      await client.query("update indexer_checkpoints set last_processed_block = null, last_processed_block_hash = null, rebuild_count = rebuild_count + 1, updated_at = now() where network = $1", [network]);
-      await client.query("commit");
-    } catch (error) { await client.query("rollback"); throw error; }
-    finally { client.release(); }
-  }
 }
 
 export type CanonicalScannerClient = EscrowScannerClient & Pick<ccc.Client, "getTip" | "getHeaderByNumberNoCache">;
@@ -134,25 +115,58 @@ export async function syncCanonicalEscrowHistory(input: {
       const tip = BigInt(input.client.getTip ? await input.client.getTip() : 0);
       if (tip < input.confirmations) return;
       const finalized = tip - input.confirmations;
+      if (finalized < input.deploymentBlock) return;
       const finalizedHeader = await input.client.getHeaderByNumberNoCache(finalized);
       if (!finalizedHeader) throw new Error(`Finalized block ${finalized} was not found`);
       finalizedBlock = finalized.toString();
 
       let checkpoint = await input.coordinator.getCheckpoint(input.network);
+      let invalidCheckpoint = checkpoint == null;
       if (checkpoint) {
-        const canonical = await input.client.getHeaderByNumberNoCache(BigInt(checkpoint.blockNumber));
-        if (!canonical || canonical.hash.toLowerCase() !== checkpoint.blockHash.toLowerCase()) {
-          await input.coordinator.resetChainState(input.network);
-          checkpoint = null;
-          rebuilt = true;
-        }
+        const checkpointBlock = BigInt(checkpoint.blockNumber);
+        const canonical = checkpointBlock < input.deploymentBlock
+          ? null
+          : await input.client.getHeaderByNumberNoCache(checkpointBlock);
+        invalidCheckpoint = !canonical || canonical.hash.toLowerCase() !== checkpoint.blockHash.toLowerCase();
       }
 
-      const minimumBlock = checkpoint ? BigInt(checkpoint.blockNumber) + 1n : input.deploymentBlock;
+      if (invalidCheckpoint) {
+        if (!input.storage.replaceCanonicalSnapshot) {
+          throw new Error("Indexer storage does not support atomic canonical snapshot replacement");
+        }
+        const staging = new MemoryEscrowIndexerStorage();
+        await scanEscrowHistory({
+          network: input.network,
+          client: input.client,
+          deployment: input.deployment,
+          storage: staging,
+          limit: input.pageSize ?? 100,
+          minimumBlock: input.deploymentBlock,
+          maximumBlock: finalized,
+        });
+        const records = await staging.listEscrows({ network: input.network, status: "all" });
+        const nextCheckpoint = {
+          blockNumber: finalized.toString(),
+          blockHash: finalizedHeader.hash,
+          lastSuccessAt: new Date().toISOString(),
+          lastError: null,
+          rebuildCount: (checkpoint?.rebuildCount ?? 0) + 1,
+        } satisfies CanonicalCheckpoint;
+        await input.storage.replaceCanonicalSnapshot(input.network, records, nextCheckpoint);
+        await input.coordinator.saveCheckpoint(input.network, nextCheckpoint);
+        rebuilt = true;
+        return;
+      }
+
+      const minimumBlock = checkpoint
+        ? (BigInt(checkpoint.blockNumber) + 1n > input.deploymentBlock
+            ? BigInt(checkpoint.blockNumber) + 1n
+            : input.deploymentBlock)
+        : input.deploymentBlock;
       if (minimumBlock <= finalized) {
         await scanEscrowHistory({ network: input.network, client: input.client, deployment: input.deployment, storage: input.storage, limit: input.pageSize ?? 100, minimumBlock, maximumBlock: finalized });
       }
-      const rebuildCount = (await input.coordinator.getCheckpoint(input.network))?.rebuildCount ?? (rebuilt ? 1 : 0);
+      const rebuildCount = checkpoint?.rebuildCount ?? 0;
       await input.coordinator.saveCheckpoint(input.network, { blockNumber: finalized.toString(), blockHash: finalizedHeader.hash, lastSuccessAt: new Date().toISOString(), lastError: null, rebuildCount });
     } catch (error) {
       await input.coordinator.saveError(input.network, error instanceof Error ? error.message : String(error));

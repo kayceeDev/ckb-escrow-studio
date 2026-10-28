@@ -10,17 +10,15 @@ const sellerLockHash = `0x${"22".repeat(32)}` as const;
 const arbitratorLockHash = `0x${"33".repeat(32)}` as const;
 
 function record(state: IndexedEscrowRecord["state"]): IndexedEscrowRecord {
-  const decoded = decodeEscrowData(
-    encodeEscrowDataHex({
-      buyerLockHash,
-      sellerLockHash,
-      arbitratorLockHash,
-      amountShannons: 100_000_000n,
-      deadlineMs: 1_790_000_000_000n,
-      state,
-      description: "Postgres history",
-    }),
-  );
+  const decoded = decodeEscrowData(encodeEscrowDataHex({
+    buyerLockHash,
+    sellerLockHash,
+    arbitratorLockHash,
+    amountShannons: 100_000_000n,
+    deadlineMs: 1_790_000_000_000n,
+    state,
+    description: "Postgres history",
+  }));
 
   return createIndexedEscrow({
     network: "testnet",
@@ -32,23 +30,22 @@ function record(state: IndexedEscrowRecord["state"]): IndexedEscrowRecord {
     createdAt: "2026-04-01T00:00:00.000Z",
     updatedAt: "2026-04-02T00:00:00.000Z",
     closedAt: state === "Completed" ? "2026-04-02T00:00:00.000Z" : null,
-    events: [
-      {
-        id: `0x${"cc".repeat(32)}:Completed`,
-        escrowId: `0x${"aa".repeat(32)}:0`,
-        network: "testnet",
-        type: "Completed",
-        txHash: `0x${"cc".repeat(32)}`,
-        blockNumber: "123",
-        blockTimestamp: "1775088000000",
-        fromState: "Delivered",
-        toState: state,
-        action: "Complete",
-        actorRole: "buyer",
-        recipientRole: "seller",
-        createdAt: "2026-04-02T00:00:00.000Z",
-      },
-    ],
+    events: [{
+      id: `0x${"cc".repeat(32)}:Completed`,
+      escrowId: `0x${"aa".repeat(32)}:0`,
+      network: "testnet",
+      type: "Completed",
+      txHash: `0x${"cc".repeat(32)}`,
+      blockNumber: "123",
+      blockHash: `0x${"ee".repeat(32)}`,
+      blockTimestamp: "1775088000000",
+      fromState: "Delivered",
+      toState: state,
+      action: "Complete",
+      actorRole: "buyer",
+      recipientRole: "seller",
+      createdAt: "2026-04-02T00:00:00.000Z",
+    }],
   });
 }
 
@@ -59,9 +56,13 @@ interface CapturedQuery {
 
 class FakeClient {
   readonly queries: CapturedQuery[] = [];
+  failOn: string | null = null;
 
   async query(text: string, values?: unknown[]) {
     this.queries.push({ text, values });
+    if (this.failOn && text.includes(this.failOn)) {
+      throw new Error(`forced failure: ${this.failOn}`);
+    }
     return { rows: [] };
   }
 
@@ -77,10 +78,7 @@ class FakePool {
     return { rows: [] };
   }
 
-  async connect() {
-    return this.client;
-  }
-
+  async connect() { return this.client; }
   async end() {}
 }
 
@@ -89,12 +87,13 @@ describe("postgres escrow indexer storage", () => {
     expect(POSTGRES_SCHEMA_SQL).toContain("create table if not exists escrows");
     expect(POSTGRES_SCHEMA_SQL).toContain("create table if not exists escrow_events");
     expect(POSTGRES_SCHEMA_SQL).toContain("create table if not exists indexer_checkpoints");
+    expect(POSTGRES_SCHEMA_SQL).toContain("block_hash text");
+    expect(POSTGRES_SCHEMA_SQL).toContain("chain_status text");
   });
 
   it("migrates before writing and upserts escrow, events, and checkpoint", async () => {
     const pool = new FakePool();
     const storage = new PostgresEscrowIndexerStorage({ pool: pool as never });
-
     await storage.upsertEscrow(record("Completed"));
 
     expect(pool.queries[0]?.text).toBe(POSTGRES_SCHEMA_SQL);
@@ -102,7 +101,6 @@ describe("postgres escrow indexer storage", () => {
     expect(pool.client.queries.some((query) => query.text.includes("insert into escrow_events"))).toBe(true);
     expect(pool.client.queries.some((query) => query.text.includes("insert into indexer_checkpoints"))).toBe(true);
   });
-});
 
   it("requires escrow participant context before dispute writes", async () => {
     const pool = new FakePool();
@@ -117,6 +115,37 @@ describe("postgres escrow indexer storage", () => {
       reason: "No escrow row exists in storage",
       evidence: [],
     })).rejects.toThrow(/buyer or seller/);
-
     expect(pool.queries.some((query) => query.text.includes("select * from escrows"))).toBe(true);
   });
+
+  it("rolls back canonical replacement when any snapshot write fails", async () => {
+    const pool = new FakePool();
+    pool.client.failOn = "insert into escrow_events";
+    const storage = new PostgresEscrowIndexerStorage({ pool: pool as never });
+
+    await expect(storage.replaceCanonicalSnapshot("testnet", [record("Completed")], {
+      blockNumber: "123",
+      blockHash: `0x${"ee".repeat(32)}`,
+      rebuildCount: 1,
+    })).rejects.toThrow(/forced failure/);
+
+    expect(pool.client.queries.some((query) => query.text === "begin")).toBe(true);
+    expect(pool.client.queries.some((query) => query.text === "rollback")).toBe(true);
+    expect(pool.client.queries.some((query) => query.text === "commit")).toBe(false);
+  });
+
+  it("reconciles dispute and decision chain status inside the snapshot transaction", async () => {
+    const pool = new FakePool();
+    const storage = new PostgresEscrowIndexerStorage({ pool: pool as never });
+    await storage.replaceCanonicalSnapshot("testnet", [record("Completed")], {
+      blockNumber: "123",
+      blockHash: `0x${"ee".repeat(32)}`,
+      rebuildCount: 1,
+    });
+
+    const texts = pool.client.queries.map((query) => query.text);
+    expect(texts.some((text) => text.includes("update arbitrator_decisions"))).toBe(true);
+    expect(texts.some((text) => text.includes("update dispute_cases"))).toBe(true);
+    expect(texts.at(-1)).toBe("commit");
+  });
+});

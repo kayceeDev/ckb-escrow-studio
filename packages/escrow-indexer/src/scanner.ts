@@ -156,6 +156,7 @@ function makeEvent(input: {
   escrowId: string;
   txHash: Hex;
   blockNumber: string | null;
+  blockHash: Hex | null;
   timestamp: string;
   fromState: EscrowState | null;
   toState: EscrowState;
@@ -169,6 +170,7 @@ function makeEvent(input: {
     type,
     txHash: input.txHash,
     blockNumber: input.blockNumber,
+    blockHash: input.blockHash,
     blockTimestamp: String(Date.parse(input.timestamp)),
     fromState: input.fromState,
     toState: input.toState,
@@ -213,6 +215,7 @@ export async function scanEscrowHistory({
 
     scannedTransactions += 1;
     const blockNumber = response.transaction.blockNumber == null ? found.blockNumber : response.transaction.blockNumber;
+    const blockHash = response.header?.hash ?? null;
     const timestamp = toIsoFromTimestamp(response.header?.timestamp);
     const decodedOutputs: DecodedOutput[] = [];
 
@@ -263,6 +266,7 @@ export async function scanEscrowHistory({
           escrowId: makeEscrowId(output.outPoint),
           txHash,
           blockNumber: blockNumber == null ? null : String(blockNumber),
+          blockHash,
           timestamp,
           fromState: null,
           toState: output.decoded.state,
@@ -304,6 +308,7 @@ export async function scanEscrowHistory({
         escrowId,
         txHash,
         blockNumber: blockNumber == null ? null : String(blockNumber),
+        blockHash,
         timestamp,
         fromState: input.decoded.state,
         toState: nextDecoded.state,

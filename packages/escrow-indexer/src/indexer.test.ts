@@ -37,7 +37,7 @@ type FakeTx = {
     };
     blockNumber: bigint;
   };
-  header: { timestamp: bigint };
+  header: { timestamp: bigint; hash: `0x${string}` };
 };
 
 type ScannerAction = "Deliver" | "Complete" | "Cancel" | "Refund" | "ResolveToBuyer" | "ResolveToSeller" | "Dispute";
@@ -68,6 +68,7 @@ function txResponse(transaction: FakeTx["transaction"]["transaction"], timestamp
     },
     header: {
       timestamp: BigInt(timestamp),
+      hash: `0x${timestamp.toString(16).padStart(64, "0")}`,
     },
   };
 }
@@ -199,6 +200,7 @@ describe("escrow chain scanner", () => {
     expect(indexed?.current).toBeNull();
     expect(indexed?.settlementTxHash).toBe(completeHash);
     expect(indexed?.events.map((event) => event.type)).toEqual(["Created", "Delivered", "Completed"]);
+    expect(indexed?.events.every((event) => event.blockHash?.startsWith("0x"))).toBe(true);
   });
 });
 
@@ -316,5 +318,103 @@ describe("dispute evidence participant validation", () => {
       resolutionTxHash: `0x${"88".repeat(32)}`,
       decidedByLockHash: sellerLockHash,
     })).rejects.toThrow(/arbitrator/);
+  });
+});
+
+describe("canonical dispute reconciliation", () => {
+  it("preserves evidence and marks missing dispute transactions as orphaned", async () => {
+    const storage = new MemoryEscrowIndexerStorage();
+    const escrowId = `${origin.txHash}:0`;
+    const disputeTxHash = `0x${"55".repeat(32)}` as const;
+    const resolutionTxHash = `0x${"88".repeat(32)}` as const;
+    const disputed = createIndexedEscrow({ network: "testnet", origin, decoded: decoded("Disputed") });
+    await storage.upsertEscrow(disputed);
+    await storage.createDisputeCase({
+      network: "testnet",
+      escrowId,
+      disputeTxHash,
+      openedByLockHash: buyerLockHash,
+      requestedOutcome: "buyer",
+      reason: "Delivery was disputed",
+      evidence: [{
+        type: "statement",
+        label: "Buyer statement",
+        value: "The evidence must survive a chain rebuild.",
+        uri: null,
+        mimeType: "text/plain",
+        sizeBytes: 42,
+        contentHash: `0x${"66".repeat(32)}`,
+        submittedByLockHash: buyerLockHash,
+      }],
+    });
+    await storage.saveArbitratorDecision({
+      network: "testnet",
+      escrowId,
+      outcome: "seller",
+      decisionNote: "Initial chain decision",
+      resolutionTxHash,
+      decidedByLockHash: arbitratorLockHash,
+    });
+
+    await storage.replaceCanonicalSnapshot("testnet", [disputed], {
+      blockNumber: "200",
+      blockHash: `0x${"ab".repeat(32)}`,
+      rebuildCount: 1,
+    });
+    const orphaned = await storage.getDisputeCase("testnet", escrowId);
+    expect(orphaned).toMatchObject({ status: "open", chainStatus: "orphaned" });
+    expect(orphaned?.evidence).toHaveLength(1);
+    expect(orphaned?.decision).toMatchObject({ chainStatus: "orphaned" });
+
+    const confirmed = createIndexedEscrow({
+      network: "testnet",
+      origin,
+      current: null,
+      settlementTxHash: resolutionTxHash,
+      decoded: decoded("Resolved"),
+      events: [
+        {
+          id: `${disputeTxHash}:Disputed`,
+          escrowId,
+          network: "testnet",
+          type: "Disputed",
+          txHash: disputeTxHash,
+          blockNumber: "201",
+          blockHash: `0x${"bc".repeat(32)}`,
+          blockTimestamp: "1790000000000",
+          fromState: "Delivered",
+          toState: "Disputed",
+          action: "Dispute",
+          actorRole: "buyer_or_seller",
+          recipientRole: null,
+          createdAt: "2026-09-20T00:00:00.000Z",
+        },
+        {
+          id: `${resolutionTxHash}:ResolvedToSeller`,
+          escrowId,
+          network: "testnet",
+          type: "ResolvedToSeller",
+          txHash: resolutionTxHash,
+          blockNumber: "202",
+          blockHash: `0x${"cd".repeat(32)}`,
+          blockTimestamp: "1790000100000",
+          fromState: "Disputed",
+          toState: "Resolved",
+          action: "ResolveToSeller",
+          actorRole: "arbitrator",
+          recipientRole: "seller",
+          createdAt: "2026-09-20T00:01:40.000Z",
+        },
+      ],
+    });
+    await storage.replaceCanonicalSnapshot("testnet", [confirmed], {
+      blockNumber: "202",
+      blockHash: `0x${"cd".repeat(32)}`,
+      rebuildCount: 2,
+    });
+    const restored = await storage.getDisputeCase("testnet", escrowId);
+    expect(restored).toMatchObject({ status: "resolved", chainStatus: "confirmed", orphanedAt: null });
+    expect(restored?.decision).toMatchObject({ chainStatus: "confirmed", orphanedAt: null });
+    expect(restored?.evidence).toHaveLength(1);
   });
 });

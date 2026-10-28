@@ -6,6 +6,7 @@ import {
 } from "./model.js";
 import type {
   AddDisputeEvidenceInput,
+  CanonicalSnapshotCheckpoint,
   CreateDisputeCaseInput,
   DisputeCaseRecord,
   EscrowIndexerStorage,
@@ -59,7 +60,7 @@ function isArbitrator(record: IndexedEscrowRecord, lockHash: string): boolean {
 export class MemoryEscrowIndexerStorage implements EscrowIndexerStorage {
   private readonly records = new Map<string, IndexedEscrowRecord>();
   private readonly disputeCases = new Map<string, DisputeCaseRecord>();
-  private readonly checkpoints = new Map<IndexedEscrowNetwork, string>();
+  private readonly checkpoints = new Map<IndexedEscrowNetwork, CanonicalSnapshotCheckpoint>();
 
   async upsertEscrow(record: IndexedEscrowRecord): Promise<void> {
     this.records.set(`${record.network}:${record.id}`, record);
@@ -78,13 +79,61 @@ export class MemoryEscrowIndexerStorage implements EscrowIndexerStorage {
   }
 
   async getStatus(network: IndexedEscrowNetwork): Promise<IndexerStatus> {
+    const checkpoint = this.checkpoints.get(network);
     return {
       network,
       ready: true,
       storage: "memory",
-      lastProcessedBlock: this.checkpoints.get(network) ?? null,
+      lastProcessedBlock: checkpoint?.blockNumber ?? null,
+      lastProcessedBlockHash: checkpoint?.blockHash ?? null,
+      lastSuccessAt: null,
+      lastError: null,
+      rebuildCount: checkpoint?.rebuildCount ?? 0,
       updatedAt: new Date().toISOString(),
     };
+  }
+
+  async replaceCanonicalSnapshot(
+    network: IndexedEscrowNetwork,
+    records: IndexedEscrowRecord[],
+    checkpoint: CanonicalSnapshotCheckpoint,
+  ): Promise<void> {
+    for (const key of Array.from(this.records.keys())) {
+      if (key.startsWith(`${network}:`)) this.records.delete(key);
+    }
+    for (const record of records) {
+      this.records.set(`${record.network}:${record.id}`, record);
+    }
+    this.checkpoints.set(network, checkpoint);
+
+    const events = records.flatMap((record) => record.events);
+    for (const [key, disputeCase] of this.disputeCases) {
+      if (disputeCase.network !== network) continue;
+      const disputeConfirmed = events.some(
+        (event) => event.txHash.toLowerCase() === disputeCase.disputeTxHash.toLowerCase() && event.action === "Dispute",
+      );
+      const decisionConfirmed = disputeCase.decision
+        ? events.some(
+            (event) =>
+              event.txHash.toLowerCase() === disputeCase.decision?.resolutionTxHash.toLowerCase() &&
+              event.action === (disputeCase.decision.outcome === "buyer" ? "ResolveToBuyer" : "ResolveToSeller"),
+          )
+        : false;
+      const orphanedAt = new Date().toISOString();
+      this.disputeCases.set(key, {
+        ...disputeCase,
+        status: disputeConfirmed && decisionConfirmed ? "resolved" : "open",
+        chainStatus: disputeConfirmed ? "confirmed" : "orphaned",
+        orphanedAt: disputeConfirmed ? null : disputeCase.orphanedAt ?? orphanedAt,
+        decision: disputeCase.decision
+          ? {
+              ...disputeCase.decision,
+              chainStatus: decisionConfirmed ? "confirmed" : "orphaned",
+              orphanedAt: decisionConfirmed ? null : disputeCase.decision.orphanedAt ?? orphanedAt,
+            }
+          : null,
+      });
+    }
   }
 
   async createDisputeCase(input: CreateDisputeCaseInput): Promise<DisputeCaseRecord> {

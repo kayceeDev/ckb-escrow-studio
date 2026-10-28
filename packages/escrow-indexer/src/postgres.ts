@@ -9,6 +9,7 @@ import {
 import type {
   AddDisputeEvidenceInput,
   ArbitratorDecision,
+  CanonicalSnapshotCheckpoint,
   CreateDisputeCaseInput,
   DisputeCaseRecord,
   DisputeEvidenceItem,
@@ -59,6 +60,7 @@ create table if not exists escrow_events (
   type text not null,
   tx_hash text not null,
   block_number numeric(40, 0),
+  block_hash text,
   block_timestamp numeric(20, 0),
   from_state text,
   to_state text not null,
@@ -82,6 +84,8 @@ create table if not exists dispute_cases (
   requested_outcome text not null,
   reason text not null,
   status text not null,
+  chain_status text not null default 'confirmed',
+  orphaned_at timestamptz,
   evidence_bundle_hash text not null,
   created_at timestamptz not null,
   updated_at timestamptz not null,
@@ -122,6 +126,8 @@ create table if not exists arbitrator_decisions (
   evidence_bundle_hash text not null,
   resolution_tx_hash text not null,
   decided_by_lock_hash text not null,
+  chain_status text not null default 'confirmed',
+  orphaned_at timestamptz,
   created_at timestamptz not null,
   primary key (network, id),
   foreign key (network, case_id) references dispute_cases (network, id) on delete cascade
@@ -135,6 +141,12 @@ create table if not exists indexer_checkpoints (
   last_processed_tx_hash text,
   updated_at timestamptz not null
 );
+
+alter table escrow_events add column if not exists block_hash text;
+alter table dispute_cases add column if not exists chain_status text not null default 'confirmed';
+alter table dispute_cases add column if not exists orphaned_at timestamptz;
+alter table arbitrator_decisions add column if not exists chain_status text not null default 'confirmed';
+alter table arbitrator_decisions add column if not exists orphaned_at timestamptz;
 `;
 
 interface PostgresEscrowRow extends QueryResultRow {
@@ -166,6 +178,7 @@ interface PostgresEventRow extends QueryResultRow {
   type: IndexedEscrowEvent["type"];
   tx_hash: string;
   block_number: string | null;
+  block_hash: string | null;
   block_timestamp: string | null;
   from_state: IndexedEscrowEvent["fromState"];
   to_state: IndexedEscrowEvent["toState"];
@@ -184,6 +197,8 @@ interface DisputeCaseRow extends QueryResultRow {
   requested_outcome: DisputeCaseRecord["requestedOutcome"];
   reason: string;
   status: DisputeCaseRecord["status"];
+  chain_status: DisputeCaseRecord["chainStatus"];
+  orphaned_at: Date | string | null;
   evidence_bundle_hash: string;
   created_at: Date | string;
   updated_at: Date | string;
@@ -215,11 +230,17 @@ interface ArbitratorDecisionRow extends QueryResultRow {
   evidence_bundle_hash: string;
   resolution_tx_hash: string;
   decided_by_lock_hash: string;
+  chain_status: ArbitratorDecision["chainStatus"];
+  orphaned_at: Date | string | null;
   created_at: Date | string;
 }
 
 interface CheckpointRow extends QueryResultRow {
   last_processed_block: string | null;
+  last_processed_block_hash: string | null;
+  last_success_at: Date | string | null;
+  last_error: string | null;
+  rebuild_count: number | string | null;
   updated_at: Date | string;
 }
 
@@ -242,6 +263,7 @@ function eventFromRow(row: PostgresEventRow): IndexedEscrowEvent {
     type: row.type,
     txHash: row.tx_hash as `0x${string}`,
     blockNumber: row.block_number,
+    blockHash: row.block_hash as `0x${string}` | null,
     blockTimestamp: row.block_timestamp,
     fromState: row.from_state,
     toState: row.to_state,
@@ -284,6 +306,8 @@ function decisionFromRow(row: ArbitratorDecisionRow | undefined): ArbitratorDeci
     evidenceBundleHash: row.evidence_bundle_hash as `0x${string}`,
     resolutionTxHash: row.resolution_tx_hash as `0x${string}`,
     decidedByLockHash: row.decided_by_lock_hash as `0x${string}`,
+    chainStatus: row.chain_status,
+    orphanedAt: toIso(row.orphaned_at),
     createdAt: toIso(row.created_at) ?? new Date().toISOString(),
   };
 }
@@ -302,6 +326,8 @@ function disputeCaseFromRow(
     requestedOutcome: row.requested_outcome,
     reason: row.reason,
     status: row.status,
+    chainStatus: row.chain_status,
+    orphanedAt: toIso(row.orphaned_at),
     evidenceBundleHash: row.evidence_bundle_hash as `0x${string}`,
     createdAt: toIso(row.created_at) ?? new Date().toISOString(),
     updatedAt: toIso(row.updated_at) ?? new Date().toISOString(),
@@ -466,13 +492,14 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
       for (const event of record.events) {
         await client.query(
           `insert into escrow_events (
-            id, escrow_id, network, type, tx_hash, block_number, block_timestamp,
+            id, escrow_id, network, type, tx_hash, block_number, block_hash, block_timestamp,
             from_state, to_state, action, actor_role, recipient_role, created_at
-          ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
           on conflict (network, id) do update set
             type = excluded.type,
             tx_hash = excluded.tx_hash,
             block_number = excluded.block_number,
+            block_hash = excluded.block_hash,
             block_timestamp = excluded.block_timestamp,
             from_state = excluded.from_state,
             to_state = excluded.to_state,
@@ -487,6 +514,7 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
             event.type,
             event.txHash,
             event.blockNumber,
+            event.blockHash,
             event.blockTimestamp,
             event.fromState,
             event.toState,
@@ -544,7 +572,8 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
   async getStatus(network: IndexedEscrowNetwork): Promise<IndexerStatus> {
     await this.ensureMigrated();
     const result = await this.pool.query<CheckpointRow>(
-      "select last_processed_block, updated_at from indexer_checkpoints where network = $1 limit 1",
+      `select last_processed_block, last_processed_block_hash, last_success_at, last_error,
+       rebuild_count, updated_at from indexer_checkpoints where network = $1 limit 1`,
       [network],
     );
     const row = result.rows[0];
@@ -554,8 +583,149 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
       ready: true,
       storage: "postgres",
       lastProcessedBlock: row?.last_processed_block ?? null,
+      lastProcessedBlockHash: row?.last_processed_block_hash as `0x${string}` | null ?? null,
+      lastSuccessAt: toIso(row?.last_success_at ?? null),
+      lastError: row?.last_error ?? null,
+      rebuildCount: Number(row?.rebuild_count ?? 0),
       updatedAt: toIso(row?.updated_at ?? null) ?? new Date().toISOString(),
     };
+  }
+
+  async replaceCanonicalSnapshot(
+    network: IndexedEscrowNetwork,
+    records: IndexedEscrowRecord[],
+    checkpoint: CanonicalSnapshotCheckpoint,
+  ): Promise<void> {
+    await this.ensureMigrated();
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("delete from escrow_events where network = $1", [network]);
+      await client.query("delete from escrows where network = $1", [network]);
+
+      for (const record of records) {
+        await client.query(
+          `insert into escrows (
+            id, network, origin_tx_hash, origin_index, current_tx_hash, current_index,
+            latest_tx_hash, settlement_tx_hash, state, buyer_lock_hash, seller_lock_hash,
+            arbitrator_lock_hash, amount_shannons, deadline_ms, description, data_hex,
+            created_at, updated_at, closed_at
+          ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+          [
+            record.id,
+            record.network,
+            record.origin.txHash,
+            record.origin.index,
+            record.current?.txHash ?? null,
+            record.current?.index ?? null,
+            record.latestTxHash,
+            record.settlementTxHash,
+            record.state,
+            record.buyerLockHash.toLowerCase(),
+            record.sellerLockHash.toLowerCase(),
+            record.arbitratorLockHash.toLowerCase(),
+            record.amountShannons,
+            record.deadlineMs,
+            record.description,
+            record.dataHex,
+            record.createdAt,
+            record.updatedAt,
+            record.closedAt,
+          ],
+        );
+        for (const event of record.events) {
+          await client.query(
+            `insert into escrow_events (
+              id, escrow_id, network, type, tx_hash, block_number, block_hash, block_timestamp,
+              from_state, to_state, action, actor_role, recipient_role, created_at
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+            [
+              event.id,
+              event.escrowId,
+              event.network,
+              event.type,
+              event.txHash,
+              event.blockNumber,
+              event.blockHash,
+              event.blockTimestamp,
+              event.fromState,
+              event.toState,
+              event.action,
+              event.actorRole,
+              event.recipientRole,
+              event.createdAt,
+            ],
+          );
+        }
+      }
+
+      await client.query(
+        `update arbitrator_decisions decision
+         set chain_status = case when exists (
+           select 1 from escrow_events event
+           where event.network = decision.network
+             and event.tx_hash = decision.resolution_tx_hash
+             and event.action = case when decision.outcome = 'buyer' then 'ResolveToBuyer' else 'ResolveToSeller' end
+         ) then 'confirmed' else 'orphaned' end,
+         orphaned_at = case when exists (
+           select 1 from escrow_events event
+           where event.network = decision.network
+             and event.tx_hash = decision.resolution_tx_hash
+             and event.action = case when decision.outcome = 'buyer' then 'ResolveToBuyer' else 'ResolveToSeller' end
+         ) then null else coalesce(decision.orphaned_at, now()) end
+         where decision.network = $1`,
+        [network],
+      );
+      await client.query(
+        `update dispute_cases dispute
+         set chain_status = case when exists (
+           select 1 from escrow_events event
+           where event.network = dispute.network
+             and event.tx_hash = dispute.dispute_tx_hash
+             and event.action = 'Dispute'
+         ) then 'confirmed' else 'orphaned' end,
+         orphaned_at = case when exists (
+           select 1 from escrow_events event
+           where event.network = dispute.network
+             and event.tx_hash = dispute.dispute_tx_hash
+             and event.action = 'Dispute'
+         ) then null else coalesce(dispute.orphaned_at, now()) end,
+         status = case when exists (
+           select 1 from arbitrator_decisions decision
+           where decision.network = dispute.network
+             and decision.case_id = dispute.id
+             and decision.chain_status = 'confirmed'
+         ) and exists (
+           select 1 from escrow_events event
+           where event.network = dispute.network
+             and event.tx_hash = dispute.dispute_tx_hash
+             and event.action = 'Dispute'
+         ) then 'resolved' else 'open' end,
+         updated_at = now()
+         where dispute.network = $1`,
+        [network],
+      );
+      await client.query(
+        `insert into indexer_checkpoints (
+          network, last_processed_block, last_processed_block_hash, last_success_at,
+          last_error, rebuild_count, updated_at
+        ) values ($1, $2, $3, now(), null, $4, now())
+        on conflict (network) do update set
+          last_processed_block = excluded.last_processed_block,
+          last_processed_block_hash = excluded.last_processed_block_hash,
+          last_success_at = excluded.last_success_at,
+          last_error = null,
+          rebuild_count = excluded.rebuild_count,
+          updated_at = excluded.updated_at`,
+        [network, checkpoint.blockNumber, checkpoint.blockHash, checkpoint.rebuildCount],
+      );
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async createDisputeCase(input: CreateDisputeCaseInput): Promise<DisputeCaseRecord> {
@@ -682,14 +852,16 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
     await client.query(
       `insert into dispute_cases (
         id, escrow_id, network, dispute_tx_hash, opened_by_lock_hash, requested_outcome,
-        reason, status, evidence_bundle_hash, created_at, updated_at
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        reason, status, chain_status, orphaned_at, evidence_bundle_hash, created_at, updated_at
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       on conflict (network, id) do update set
         dispute_tx_hash = excluded.dispute_tx_hash,
         opened_by_lock_hash = excluded.opened_by_lock_hash,
         requested_outcome = excluded.requested_outcome,
         reason = excluded.reason,
         status = excluded.status,
+        chain_status = excluded.chain_status,
+        orphaned_at = excluded.orphaned_at,
         evidence_bundle_hash = excluded.evidence_bundle_hash,
         updated_at = excluded.updated_at`,
       [
@@ -701,6 +873,8 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
         record.requestedOutcome,
         record.reason,
         record.status,
+        record.chainStatus,
+        record.orphanedAt,
         record.evidenceBundleHash,
         record.createdAt,
         record.updatedAt,
@@ -744,14 +918,16 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
     await client.query(
       `insert into arbitrator_decisions (
         id, case_id, escrow_id, network, outcome, decision_note, evidence_bundle_hash,
-        resolution_tx_hash, decided_by_lock_hash, created_at
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        resolution_tx_hash, decided_by_lock_hash, chain_status, orphaned_at, created_at
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       on conflict (network, id) do update set
         outcome = excluded.outcome,
         decision_note = excluded.decision_note,
         evidence_bundle_hash = excluded.evidence_bundle_hash,
         resolution_tx_hash = excluded.resolution_tx_hash,
-        decided_by_lock_hash = excluded.decided_by_lock_hash`,
+        decided_by_lock_hash = excluded.decided_by_lock_hash,
+        chain_status = excluded.chain_status,
+        orphaned_at = excluded.orphaned_at`,
       [
         decision.id,
         decision.caseId,
@@ -762,6 +938,8 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
         decision.evidenceBundleHash,
         decision.resolutionTxHash,
         decision.decidedByLockHash.toLowerCase(),
+        decision.chainStatus,
+        decision.orphanedAt,
         decision.createdAt,
       ],
     );

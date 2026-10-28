@@ -888,7 +888,16 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                       <Badge variant="outline">Requested: {disputeCase.requestedOutcome}</Badge>
                     </div>
                     <p className="mt-3 font-medium text-foreground">{disputeCase.reason}</p>
-
+                    {disputeCase.chainStatus === "orphaned" ? (
+                      <div className="mt-4 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm leading-6 text-destructive">
+                        The dispute transaction is no longer on the canonical CKB chain. Evidence is preserved, but resolution is paused until the dispute is confirmed again.
+                      </div>
+                    ) : null}
+                    {disputeCase.decision?.chainStatus === "orphaned" ? (
+                      <div className="mt-4 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm leading-6 text-destructive">
+                        The previous resolution transaction was reorganized out of the chain. This case has returned to review.
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="space-y-3">
@@ -981,12 +990,14 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                   const hasRequiredRecipientScript = requirement
                     ? Boolean(participantScripts[requirement.lockHash])
                     : true;
+                  const requiresConfirmedDispute = action.action === "ResolveToBuyer" || action.action === "ResolveToSeller";
+                  const disputeConfirmed = disputeCase?.chainStatus !== "orphaned";
                   const inProduct = canExecuteInProduct(
                     action,
                     Boolean(service),
                     record.source === "live",
                     { buyer: hasBuyerScript, seller: hasSellerScript },
-                  );
+                  ) && (!requiresConfirmedDispute || disputeConfirmed);
 
                   return (
                     <div key={action.action} className="rounded-[1.25rem] border border-border bg-white/75 p-4">
@@ -996,7 +1007,15 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                           <p className="mt-1 text-sm leading-6 text-muted-foreground">{action.description}</p>
                         </div>
                         <Badge variant={inProduct ? "success" : action.mode === "direct" ? "secondary" : "outline"}>
-                          {inProduct ? "Ready" : requirement && !hasRequiredRecipientScript ? "Needs address" : action.mode === "direct" ? "Connect wallet" : "Studio"}
+                          {inProduct
+                            ? "Ready"
+                            : requiresConfirmedDispute && !disputeConfirmed
+                              ? "Chain review needed"
+                              : requirement && !hasRequiredRecipientScript
+                                ? "Needs address"
+                                : action.mode === "direct"
+                                  ? "Connect wallet"
+                                  : "Studio"}
                         </Badge>
                       </div>
                       <div className="flex flex-wrap gap-3">
@@ -1014,7 +1033,9 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                         </Button>
                         {!inProduct ? (
                           <p className="self-center text-xs leading-5 text-muted-foreground">
-                            {requirement && !hasRequiredRecipientScript
+                            {requiresConfirmedDispute && !disputeConfirmed
+                              ? "Resolution is paused because the dispute transaction is no longer confirmed on the canonical chain."
+                              : requirement && !hasRequiredRecipientScript
                               ? `${requirement.label} is required before this deal can be closed.`
                               : action.mode === "studio"
                                 ? "Open Studio for advanced controls."
