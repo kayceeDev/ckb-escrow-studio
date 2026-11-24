@@ -13,10 +13,10 @@ The reproduced contract binary hash matches the deployed output data hash.
 
 ## Automated Verification
 
-Latest automated run completed on 2026-10-28:
+Latest automated run completed on 2026-11-24:
 
 - [x] Frontend monorepo typecheck
-- [x] Frontend monorepo tests: 111 tests passed
+- [x] Frontend monorepo tests: 123 tests passed
 - [x] Next.js production build
 - [x] Contract unit tests: 26 passed
 - [x] CKB-VM integration tests: 7 passed
@@ -28,8 +28,10 @@ Latest automated run completed on 2026-10-28:
 - [x] Canonical checkpoint and reorganization detection tests
 - [x] Atomic canonical snapshot rollback tests
 - [x] Orphaned dispute/decision reconciliation with evidence preservation
+- [x] Escrow action decoding bound to the exact escrow input witness
+- [x] Pending dispute metadata promoted only from finalized canonical events
 - [x] Vercel `POSTGRES_URL` resolution and production fail-closed tests
-- [x] Pre-sign network, CellDep, and live escrow tests
+- [x] Pre-sign network, CellDep, live escrow, finalized action, and recipient net-gain tests
 
 ## Environment Gate
 
@@ -79,7 +81,7 @@ Additional checks:
 - [ ] Terminal receipts survive cleared browser storage
 - [ ] Explorer links match submitted transactions
 - [ ] Daily cron reports healthy PostgreSQL storage
-- [ ] A simulated checkpoint hash mismatch triggers a successful rebuild
+- [ ] A deployed checkpoint hash mismatch drill triggers a successful rebuild
 - [ ] An orphaned dispute or resolution is visibly marked while its evidence remains available
 
 ## Release Decision

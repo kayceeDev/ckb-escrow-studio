@@ -26,12 +26,14 @@ The reproducible contract build and checksums were refreshed in `d5cfee1`. The c
 
 ## Dispute API Authorization
 
-Resolved across the frontend/backend packages in `6205853` and strengthened by `4326b03`.
+Resolved across the frontend/backend packages in `6205853` and strengthened by `4326b03` and `14ba6e1`.
 
 - Dispute metadata writes require a short-lived, single-use nonce.
 - The participant signs the bound message with the connected wallet.
 - The server verifies the signature, network address, derived lock script, stored participant role, nonce expiry, and atomic nonce consumption.
 - Dispute and resolution transaction hashes must be committed on chain and must consume the expected escrow outpoint with the expected action.
+- Action decoding is bound to the witness at the exact escrow input index; unrelated input witnesses cannot supply a decoy action.
+- Newly submitted dispute and decision metadata remains pending until the finalized canonical scanner observes the matching event.
 - Unsupported signature families are rejected for dispute metadata instead of being accepted without identity binding.
 - Production requires PostgreSQL for both nonce and escrow/indexer state. Missing or failed persistence returns `503`; it never falls back to process memory.
 - Both `DATABASE_URL` and Vercel's `POSTGRES_URL` are supported as server-only variables.
@@ -43,8 +45,10 @@ The broader review recommendations were implemented in these commits:
 - `376cf9c`: finalized checkpoints, confirmation depth, advisory locking, and scheduled sync.
 - `c67b9c8`: atomic canonical snapshot replacement, deployment-block checkpoint normalization, event block hashes, and orphan reconciliation for dispute metadata.
 - `06ad7d0`: pre-sign validation for live outpoints, network genesis, deployment CellDep, escrow cell contents, and recipient scripts.
+- `14ba6e1`: exact escrow-witness binding, finalized dispute status reconciliation, and fail-closed coordinator error handling.
+- `25a38c2`: validation of the final fee-completed transaction, including CellDep, escrow input, action witness, recipient, and recipient net gain.
 
-During a reorganization, the scanner rebuilds chain-derived escrow state from deployment block `22272848` and replaces the snapshot and checkpoint atomically. Evidence remains available, while a dispute or decision whose transaction disappeared is marked orphaned and cannot be resolved until chain confirmation is restored.
+During a reorganization, the scanner rebuilds chain-derived escrow state from deployment block `22272848` and replaces the snapshot and checkpoint atomically. Evidence remains available, while a dispute or decision whose transaction disappeared is marked orphaned and cannot be resolved until chain confirmation is restored. This recovery path is covered by automated tests; a deliberate mismatch drill on the deployed environment remains part of acceptance.
 
 ## Verification Status
 
@@ -55,6 +59,6 @@ Still pending before public promotion:
 - complete the listed buyer, seller, and arbitrator flows with three real testnet wallets
 - record transaction hashes and explorer links
 - observe the scheduled Postgres scanner and a recovery run in the deployed Vercel environment
-- obtain an independent review of the hardening commits
+- obtain an external independent review of the hardening commits (an internal review-agent pass has been completed and its findings are addressed in `14ba6e1` and `25a38c2`)
 
 Mainnet remains gated until those steps pass and there are no unresolved high-severity findings.
