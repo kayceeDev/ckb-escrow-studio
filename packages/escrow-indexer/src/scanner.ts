@@ -39,6 +39,7 @@ interface DecodedOutput {
 }
 
 interface DecodedInput {
+  inputIndex: number;
   outPoint: IndexedOutPoint;
   decoded: EscrowCellView;
   origin: IndexedOutPoint;
@@ -65,20 +66,15 @@ function scriptsEqual(left: ccc.ScriptLike | null | undefined, right: ccc.Script
   return ccc.Script.from(left).hash() === ccc.Script.from(right).hash();
 }
 
-function decodeActionFromWitness(tx: { witnesses: Hex[] }): EscrowAction | null {
-  for (const witness of tx.witnesses) {
-    try {
-      const args = ccc.WitnessArgs.fromBytes(witness);
-      if (!args.inputType) {
-        continue;
-      }
-      return decodeEscrowAction(args.inputType).action;
-    } catch {
-      // Wallet lock witnesses are not escrow action witnesses.
-    }
+function decodeActionFromWitness(tx: { witnesses: Hex[] }, inputIndex: number): EscrowAction | null {
+  const witness = tx.witnesses[inputIndex];
+  if (!witness) return null;
+  try {
+    const args = ccc.WitnessArgs.fromBytes(witness);
+    return args.inputType ? decodeEscrowAction(args.inputType).action : null;
+  } catch {
+    return null;
   }
-
-  return null;
 }
 
 function recipientForAction(action: EscrowAction | null): "buyer" | "seller" | null {
@@ -201,22 +197,30 @@ export async function scanEscrowHistory({
   let indexedEscrows = 0;
 
   for await (const found of client.findTransactionsByType(typeScript, true, "asc", limit)) {
-    const foundBlock = found.blockNumber == null ? null : BigInt(found.blockNumber);
-    if ((minimumBlock != null && foundBlock != null && foundBlock < minimumBlock) ||
-        (maximumBlock != null && foundBlock != null && foundBlock > maximumBlock)) {
+    if (found.blockNumber == null) {
+      continue;
+    }
+    const foundBlock = BigInt(found.blockNumber);
+    if ((minimumBlock != null && foundBlock < minimumBlock) ||
+        (maximumBlock != null && foundBlock > maximumBlock)) {
       continue;
     }
     const txHash = found.txHash;
     const response = await client.getTransactionWithHeader(txHash);
     const tx = response?.transaction.transaction;
-    if (!tx) {
+    if (!tx || response.transaction.blockNumber == null || !response.header) {
+      continue;
+    }
+
+    const blockNumber = BigInt(response.transaction.blockNumber);
+    if ((minimumBlock != null && blockNumber < minimumBlock) ||
+        (maximumBlock != null && blockNumber > maximumBlock)) {
       continue;
     }
 
     scannedTransactions += 1;
-    const blockNumber = response.transaction.blockNumber == null ? found.blockNumber : response.transaction.blockNumber;
-    const blockHash = response.header?.hash ?? null;
-    const timestamp = toIsoFromTimestamp(response.header?.timestamp);
+    const blockHash = response.header.hash;
+    const timestamp = toIsoFromTimestamp(response.header.timestamp);
     const decodedOutputs: DecodedOutput[] = [];
 
     for (let index = 0; index < tx.outputs.length; index += 1) {
@@ -236,7 +240,7 @@ export async function scanEscrowHistory({
     }
 
     const decodedInputs: DecodedInput[] = [];
-    for (const input of tx.inputs) {
+    for (const [inputIndex, input] of tx.inputs.entries()) {
       const previous = input.previousOutput;
       const previousOutPoint = { txHash: previous.txHash, index: toIndex(previous.index) };
       const previousTx = await client.getTransactionWithHeader(previous.txHash);
@@ -251,13 +255,11 @@ export async function scanEscrowHistory({
           previousTx?.transaction.transaction.outputsData[previousOutputIndex] ?? "0x",
         );
         const { origin, record } = await findOrigin(storage, network, previousOutPoint);
-        decodedInputs.push({ outPoint: previousOutPoint, decoded, origin, record });
+        decodedInputs.push({ inputIndex, outPoint: previousOutPoint, decoded, origin, record });
       } catch {
         // Ignore historical cells that cannot be decoded as escrow data.
       }
     }
-
-    const action = decodeActionFromWitness(tx);
 
     if (decodedInputs.length === 0) {
       for (const output of decodedOutputs) {
@@ -265,7 +267,7 @@ export async function scanEscrowHistory({
           network,
           escrowId: makeEscrowId(output.outPoint),
           txHash,
-          blockNumber: blockNumber == null ? null : String(blockNumber),
+          blockNumber: String(blockNumber),
           blockHash,
           timestamp,
           fromState: null,
@@ -290,6 +292,7 @@ export async function scanEscrowHistory({
     }
 
     for (const input of decodedInputs) {
+      const action = decodeActionFromWitness(tx, input.inputIndex);
       const nextOutput = decodedOutputs.find(
         (output) =>
           output.decoded.buyerLockHash === input.decoded.buyerLockHash &&
@@ -307,7 +310,7 @@ export async function scanEscrowHistory({
         network,
         escrowId,
         txHash,
-        blockNumber: blockNumber == null ? null : String(blockNumber),
+        blockNumber: String(blockNumber),
         blockHash,
         timestamp,
         fromState: input.decoded.state,

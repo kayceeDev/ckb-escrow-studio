@@ -14,19 +14,18 @@ function outPointId(outPoint: { txHash: ccc.HexLike; index: ccc.NumLike }): stri
   return `${ccc.hexFrom(outPoint.txHash).toLowerCase()}:${toIndex(outPoint.index)}`;
 }
 
-export function decodeEscrowActionFromWitnesses(witnesses: ccc.HexLike[]): EscrowAction | null {
-  for (const witness of witnesses) {
-    try {
-      const args = ccc.WitnessArgs.fromBytes(witness);
-      if (!args.inputType) {
-        continue;
-      }
-      return decodeEscrowAction(args.inputType).action;
-    } catch {
-      // Wallet lock witnesses are not escrow action witnesses.
-    }
+export function decodeEscrowActionFromWitnesses(
+  witnesses: ccc.HexLike[],
+  escrowInputIndex: number,
+): EscrowAction | null {
+  const witness = witnesses[escrowInputIndex];
+  if (!witness) return null;
+  try {
+    const args = ccc.WitnessArgs.fromBytes(witness);
+    return args.inputType ? decodeEscrowAction(args.inputType).action : null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 export async function verifyDisputeTransactionHash(input: {
@@ -43,10 +42,6 @@ export async function verifyDisputeTransactionHash(input: {
     throw new Error("Escrow must be indexed before dispute transaction metadata can be stored");
   }
 
-  if (record.events.some((event) => event.txHash.toLowerCase() === input.txHash && event.action === input.expectedAction)) {
-    return;
-  }
-
   const response = await client.getTransactionWithHeader(input.txHash);
   const tx = response?.transaction.transaction;
   if (!tx) {
@@ -56,19 +51,19 @@ export async function verifyDisputeTransactionHash(input: {
     throw new Error("Submitted dispute transaction is not committed yet");
   }
 
-  const action = decodeEscrowActionFromWitnesses(tx.witnesses ?? []);
-  if (action !== input.expectedAction) {
-    throw new Error(`Submitted transaction action ${action ?? "unknown"} does not match ${input.expectedAction}`);
-  }
-
   const allowedInputs = new Set<string>();
   allowedInputs.add(`${record.origin.txHash.toLowerCase()}:${record.origin.index}`);
   if (record.current) {
     allowedInputs.add(`${record.current.txHash.toLowerCase()}:${record.current.index}`);
   }
 
-  const touchesEscrow = tx.inputs.some((cellInput) => allowedInputs.has(outPointId(cellInput.previousOutput)));
-  if (!touchesEscrow) {
+  const escrowInputIndex = tx.inputs.findIndex((cellInput) => allowedInputs.has(outPointId(cellInput.previousOutput)));
+  if (escrowInputIndex < 0) {
     throw new Error("Submitted transaction does not consume the expected escrow cell");
+  }
+
+  const action = decodeEscrowActionFromWitnesses(tx.witnesses ?? [], escrowInputIndex);
+  if (action !== input.expectedAction) {
+    throw new Error(`Submitted transaction action ${action ?? "unknown"} does not match ${input.expectedAction}`);
   }
 }

@@ -49,50 +49,86 @@ export interface PostgresIndexerCoordinatorOptions {
   poolConfig?: PoolConfig;
 }
 
+export class IndexerCoordinatorStorageError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "IndexerCoordinatorStorageError";
+  }
+}
+
 export class PostgresIndexerCoordinator implements IndexerCoordinator {
   private readonly pool: Pool;
   private migrated = false;
   constructor(options: PostgresIndexerCoordinatorOptions = {}) {
     this.pool = options.pool ?? new Pool({ connectionString: options.connectionString, ...options.poolConfig });
   }
+  private async databaseOperation<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      throw new IndexerCoordinatorStorageError(
+        `Postgres indexer coordinator is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
   private async migrate() {
     if (this.migrated) return;
-    await this.pool.query(CANONICAL_INDEXER_SCHEMA_SQL);
+    await this.databaseOperation(() => this.pool.query(CANONICAL_INDEXER_SCHEMA_SQL));
     this.migrated = true;
   }
   async withLock<T>(network: IndexedEscrowNetwork, task: () => Promise<T>) {
     await this.migrate();
-    const client = await this.pool.connect();
+    const client = await this.databaseOperation(() => this.pool.connect());
     const key = `ckb-escrow-indexer:${network}`;
     try {
-      const lock = await client.query<{ acquired: boolean }>("select pg_try_advisory_lock(hashtext($1)) as acquired", [key]);
+      const lock = await this.databaseOperation(() =>
+        client.query<{ acquired: boolean }>("select pg_try_advisory_lock(hashtext($1)) as acquired", [key]),
+      );
       if (!lock.rows[0]?.acquired) return { acquired: false };
-      try { return { acquired: true, result: await task() }; }
-      finally { await client.query("select pg_advisory_unlock(hashtext($1))", [key]); }
+      let result: T | undefined;
+      let taskError: unknown;
+      try {
+        result = await task();
+      } catch (error) {
+        taskError = error;
+      }
+      try {
+        await this.databaseOperation(() => client.query("select pg_advisory_unlock(hashtext($1))", [key]));
+      } catch (unlockError) {
+        if (!taskError) throw unlockError;
+      }
+      if (taskError) throw taskError;
+      return { acquired: true, result: result as T };
     } finally { client.release(); }
   }
   async getCheckpoint(network: IndexedEscrowNetwork): Promise<CanonicalCheckpoint | null> {
     await this.migrate();
-    const result = await this.pool.query(
+    const result = await this.databaseOperation(() => this.pool.query(
       `select last_processed_block, last_processed_block_hash, last_success_at, last_error, rebuild_count
-       from indexer_checkpoints where network = $1`, [network]);
+       from indexer_checkpoints where network = $1`, [network]));
     const row = result.rows[0];
     if (!row?.last_processed_block || !row.last_processed_block_hash) return null;
     return { blockNumber: String(row.last_processed_block), blockHash: row.last_processed_block_hash, lastSuccessAt: row.last_success_at?.toISOString?.() ?? row.last_success_at ?? null, lastError: row.last_error ?? null, rebuildCount: Number(row.rebuild_count ?? 0) };
   }
   async saveCheckpoint(network: IndexedEscrowNetwork, checkpoint: CanonicalCheckpoint) {
     await this.migrate();
-    await this.pool.query(
+    await this.databaseOperation(() => this.pool.query(
       `insert into indexer_checkpoints (network, last_processed_block, last_processed_block_hash, last_success_at, last_error, rebuild_count, updated_at)
        values ($1, $2, $3, now(), null, $4, now())
        on conflict (network) do update set last_processed_block = excluded.last_processed_block,
        last_processed_block_hash = excluded.last_processed_block_hash, last_success_at = now(), last_error = null,
        rebuild_count = excluded.rebuild_count, updated_at = now()`,
-      [network, checkpoint.blockNumber, checkpoint.blockHash, checkpoint.rebuildCount]);
+      [network, checkpoint.blockNumber, checkpoint.blockHash, checkpoint.rebuildCount]));
   }
   async saveError(network: IndexedEscrowNetwork, message: string) {
     await this.migrate();
-    await this.pool.query("update indexer_checkpoints set last_error = $2, updated_at = now() where network = $1", [network, message]);
+    await this.databaseOperation(() => this.pool.query(
+      `insert into indexer_checkpoints (network, last_error, updated_at)
+       values ($1, $2, now())
+       on conflict (network) do update set last_error = excluded.last_error, updated_at = now()`,
+      [network, message],
+    ));
   }
 }
 
@@ -166,6 +202,7 @@ export async function syncCanonicalEscrowHistory(input: {
       if (minimumBlock <= finalized) {
         await scanEscrowHistory({ network: input.network, client: input.client, deployment: input.deployment, storage: input.storage, limit: input.pageSize ?? 100, minimumBlock, maximumBlock: finalized });
       }
+      await input.storage.reconcileDisputeChainStatus?.(input.network);
       const rebuildCount = checkpoint?.rebuildCount ?? 0;
       await input.coordinator.saveCheckpoint(input.network, { blockNumber: finalized.toString(), blockHash: finalizedHeader.hash, lastSuccessAt: new Date().toISOString(), lastError: null, rebuildCount });
     } catch (error) {

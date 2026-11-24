@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { MemoryIndexerCoordinator, syncCanonicalEscrowHistory } from "./canonical.js";
+import {
+  MemoryIndexerCoordinator,
+  PostgresIndexerCoordinator,
+  syncCanonicalEscrowHistory,
+} from "./canonical.js";
 import type {
   CanonicalSnapshotCheckpoint,
   EscrowIndexerStorage,
@@ -11,6 +15,7 @@ import type {
 const typeScript = { codeHash: `0x${"11".repeat(32)}`, hashType: "data2" as const, args: "0x" };
 
 function storage() {
+  let reconciliations = 0;
   const replacements: Array<{
     network: IndexedEscrowNetwork;
     records: IndexedEscrowRecord[];
@@ -40,8 +45,11 @@ function storage() {
     async replaceCanonicalSnapshot(network, records, checkpoint) {
       replacements.push({ network, records, checkpoint });
     },
+    async reconcileDisputeChainStatus() {
+      reconciliations += 1;
+    },
   };
-  return { replacements, value };
+  return { replacements, value, reconciliations: () => reconciliations };
 }
 
 function client(headers: Map<string, string>, requestedHeaders: string[] = []) {
@@ -58,6 +66,21 @@ function client(headers: Map<string, string>, requestedHeaders: string[] = []) {
 }
 
 describe("canonical indexer synchronization", () => {
+  it("persists an initial synchronization error before any checkpoint exists", async () => {
+    const queries: string[] = [];
+    const pool = {
+      async query(text: string) {
+        queries.push(text);
+        return { rows: [] };
+      },
+    };
+    const coordinator = new PostgresIndexerCoordinator({ pool: pool as never });
+    await coordinator.saveError("testnet", "initial rebuild failed");
+
+    expect(queries.some((text) => text.includes("insert into indexer_checkpoints"))).toBe(true);
+    expect(queries.some((text) => text.includes("on conflict (network)"))).toBe(true);
+  });
+
   it("atomically builds the first finalized snapshot and checkpoint", async () => {
     const coordinator = new MemoryIndexerCoordinator();
     const target = storage();
@@ -90,6 +113,30 @@ describe("canonical indexer synchronization", () => {
     expect(second.acquired).toBe(false);
     release?.();
     await first;
+  });
+
+  it("reconciles pending dispute metadata on every successful incremental sync", async () => {
+    const coordinator = new MemoryIndexerCoordinator();
+    await coordinator.saveCheckpoint("testnet", {
+      blockNumber: "108",
+      blockHash: `0x${"aa".repeat(32)}`,
+      lastSuccessAt: null,
+      lastError: null,
+      rebuildCount: 1,
+    });
+    const target = storage();
+    const result = await syncCanonicalEscrowHistory({
+      network: "testnet",
+      client: client(new Map([["108", `0x${"aa".repeat(32)}`]])) as never,
+      deployment: { typeScript },
+      storage: target.value,
+      coordinator,
+      deploymentBlock: 100n,
+      confirmations: 12n,
+    });
+
+    expect(result.rebuilt).toBe(false);
+    expect(target.reconciliations()).toBe(1);
   });
 
   it("rebuilds from the deployment boundary when a checkpoint predates deployment", async () => {

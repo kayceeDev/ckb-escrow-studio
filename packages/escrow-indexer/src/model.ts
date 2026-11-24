@@ -204,7 +204,7 @@ export function createDisputeCaseRecord(input: CreateDisputeCaseInput): DisputeC
     requestedOutcome: input.requestedOutcome,
     reason: input.reason,
     status: "open",
-    chainStatus: "confirmed",
+    chainStatus: "pending",
     orphanedAt: null,
     evidenceBundleHash: computeEvidenceBundleHash(evidence),
     createdAt: now,
@@ -262,7 +262,7 @@ export function applyArbitratorDecision(caseRecord: DisputeCaseRecord, input: Sa
     escrowId: input.escrowId,
     network: input.network,
     evidenceBundleHash,
-    chainStatus: "confirmed",
+    chainStatus: "pending",
     orphanedAt: null,
     createdAt: now,
     ...decisionBase,
@@ -270,7 +270,7 @@ export function applyArbitratorDecision(caseRecord: DisputeCaseRecord, input: Sa
 
   return {
     ...caseRecord,
-    status: "resolved",
+    status: "open",
     evidenceBundleHash,
     updatedAt: now,
     decision,

@@ -84,7 +84,7 @@ create table if not exists dispute_cases (
   requested_outcome text not null,
   reason text not null,
   status text not null,
-  chain_status text not null default 'confirmed',
+  chain_status text not null default 'pending',
   orphaned_at timestamptz,
   evidence_bundle_hash text not null,
   created_at timestamptz not null,
@@ -126,7 +126,7 @@ create table if not exists arbitrator_decisions (
   evidence_bundle_hash text not null,
   resolution_tx_hash text not null,
   decided_by_lock_hash text not null,
-  chain_status text not null default 'confirmed',
+  chain_status text not null default 'pending',
   orphaned_at timestamptz,
   created_at timestamptz not null,
   primary key (network, id),
@@ -147,6 +147,8 @@ alter table dispute_cases add column if not exists chain_status text not null de
 alter table dispute_cases add column if not exists orphaned_at timestamptz;
 alter table arbitrator_decisions add column if not exists chain_status text not null default 'confirmed';
 alter table arbitrator_decisions add column if not exists orphaned_at timestamptz;
+alter table dispute_cases alter column chain_status set default 'pending';
+alter table arbitrator_decisions alter column chain_status set default 'pending';
 `;
 
 interface PostgresEscrowRow extends QueryResultRow {
@@ -728,6 +730,70 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
     }
   }
 
+  async reconcileDisputeChainStatus(network: IndexedEscrowNetwork): Promise<void> {
+    await this.ensureMigrated();
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(
+        `update arbitrator_decisions decision
+         set chain_status = case when exists (
+           select 1 from escrow_events event
+           where event.network = decision.network
+             and event.tx_hash = decision.resolution_tx_hash
+             and event.action = case when decision.outcome = 'buyer' then 'ResolveToBuyer' else 'ResolveToSeller' end
+         ) then 'confirmed'
+         when decision.chain_status = 'orphaned' then 'orphaned'
+         else 'pending' end,
+         orphaned_at = case when exists (
+           select 1 from escrow_events event
+           where event.network = decision.network
+             and event.tx_hash = decision.resolution_tx_hash
+             and event.action = case when decision.outcome = 'buyer' then 'ResolveToBuyer' else 'ResolveToSeller' end
+         ) then null when decision.chain_status = 'orphaned' then decision.orphaned_at else null end
+         where decision.network = $1`,
+        [network],
+      );
+      await client.query(
+        `update dispute_cases dispute
+         set chain_status = case when exists (
+           select 1 from escrow_events event
+           where event.network = dispute.network
+             and event.tx_hash = dispute.dispute_tx_hash
+             and event.action = 'Dispute'
+         ) then 'confirmed'
+         when dispute.chain_status = 'orphaned' then 'orphaned'
+         else 'pending' end,
+         orphaned_at = case when exists (
+           select 1 from escrow_events event
+           where event.network = dispute.network
+             and event.tx_hash = dispute.dispute_tx_hash
+             and event.action = 'Dispute'
+         ) then null when dispute.chain_status = 'orphaned' then dispute.orphaned_at else null end,
+         status = case when exists (
+           select 1 from arbitrator_decisions decision
+           where decision.network = dispute.network
+             and decision.case_id = dispute.id
+             and decision.chain_status = 'confirmed'
+         ) and exists (
+           select 1 from escrow_events event
+           where event.network = dispute.network
+             and event.tx_hash = dispute.dispute_tx_hash
+             and event.action = 'Dispute'
+         ) then 'resolved' else 'open' end,
+         updated_at = now()
+         where dispute.network = $1`,
+        [network],
+      );
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async createDisputeCase(input: CreateDisputeCaseInput): Promise<DisputeCaseRecord> {
     await this.ensureMigrated();
     const escrow = await this.getEscrow({ network: input.network, escrowId: input.escrowId });
@@ -801,6 +867,9 @@ export class PostgresEscrowIndexerStorage implements EscrowIndexerStorage {
     const existing = await this.getDisputeCase(input.network, input.escrowId);
     if (!existing) {
       throw new Error(`Dispute case not found for escrow ${input.escrowId}`);
+    }
+    if (existing.chainStatus !== "confirmed") {
+      throw new Error("The dispute transaction must be finalized before an arbitrator decision can be saved");
     }
     const escrow = await this.getEscrow({ network: input.network, escrowId: input.escrowId });
     if (!escrow || !isArbitrator(escrow, input.decidedByLockHash)) {

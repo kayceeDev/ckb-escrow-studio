@@ -15,6 +15,7 @@ import {
   makeEscrowId,
   scanEscrowHistory,
   type EscrowScannerClient,
+  type IndexedEscrowEvent,
 } from "./index.js";
 
 const buyerLockHash = `0x${"11".repeat(32)}` as const;
@@ -54,6 +55,33 @@ function decoded(state: EscrowState) {
       description: "Index me across devices",
     }),
   );
+}
+
+function chainEvent(input: {
+  txHash: `0x${string}`;
+  type: IndexedEscrowEvent["type"];
+  action: IndexedEscrowEvent["action"];
+  fromState: EscrowState;
+  toState: EscrowState;
+  actorRole: IndexedEscrowEvent["actorRole"];
+  recipientRole?: IndexedEscrowEvent["recipientRole"];
+}): IndexedEscrowEvent {
+  return {
+    id: `${input.txHash}:${input.type}`,
+    escrowId: `${origin.txHash}:0`,
+    network: "testnet",
+    type: input.type,
+    txHash: input.txHash,
+    blockNumber: "200",
+    blockHash: `0x${"bc".repeat(32)}`,
+    blockTimestamp: "1790000000000",
+    fromState: input.fromState,
+    toState: input.toState,
+    action: input.action,
+    actorRole: input.actorRole,
+    recipientRole: input.recipientRole ?? null,
+    createdAt: "2026-09-20T00:00:00.000Z",
+  };
 }
 
 function witness(action: ScannerAction) {
@@ -178,10 +206,13 @@ describe("escrow chain scanner", () => {
       ),
       [completeHash]: txResponse(
         {
-          inputs: [{ previousOutput: { txHash: deliverHash as `0x${string}`, index: 0n } }],
+          inputs: [
+            { previousOutput: { txHash: `0x${"40".repeat(32)}`, index: 0n } },
+            { previousOutput: { txHash: deliverHash as `0x${string}`, index: 0n } },
+          ],
           outputs: [{ type: null }],
           outputsData: ["0x"],
-          witnesses: [witness("Complete")],
+          witnesses: [witness("Dispute"), witness("Complete")],
         },
         1_790_000_200_000,
       ),
@@ -201,6 +232,27 @@ describe("escrow chain scanner", () => {
     expect(indexed?.settlementTxHash).toBe(completeHash);
     expect(indexed?.events.map((event) => event.type)).toEqual(["Created", "Delivered", "Completed"]);
     expect(indexed?.events.every((event) => event.blockHash?.startsWith("0x"))).toBe(true);
+  });
+
+  it("ignores transaction-pool results without committed block metadata", async () => {
+    const storage = new MemoryEscrowIndexerStorage();
+    const pendingHash = `0x${"50".repeat(32)}` as const;
+    const client = {
+      async *findTransactionsByType() {
+        yield { txHash: pendingHash, blockNumber: null, txIndex: null, cells: [] };
+      },
+      async getTransactionWithHeader() {
+        throw new Error("pending transactions must not be fetched into canonical history");
+      },
+    };
+
+    await expect(scanEscrowHistory({
+      network: "testnet",
+      client: client as never,
+      deployment: { typeScript },
+      storage,
+      maximumBlock: 100n,
+    })).resolves.toEqual({ scannedTransactions: 0, indexedEscrows: 0 });
   });
 });
 
@@ -237,16 +289,43 @@ describe("dispute evidence cases", () => {
 
   it("adds participant evidence and records arbitrator decision", async () => {
     const storage = new MemoryEscrowIndexerStorage();
+    const disputeTxHash = `0x${"55".repeat(32)}` as const;
+    const resolutionTxHash = `0x${"88".repeat(32)}` as const;
     await storage.upsertEscrow(createIndexedEscrow({ network: "testnet", origin, decoded: decoded("Disputed") }));
     await storage.createDisputeCase({
       network: "testnet",
       escrowId: `${origin.txHash}:0`,
-      disputeTxHash: `0x${"55".repeat(32)}`,
+      disputeTxHash,
       openedByLockHash: buyerLockHash,
       requestedOutcome: "buyer",
       reason: "Delivery was disputed",
       evidence: [],
     });
+
+    await expect(storage.saveArbitratorDecision({
+      network: "testnet",
+      escrowId: `${origin.txHash}:0`,
+      outcome: "seller",
+      decisionNote: "Too early",
+      resolutionTxHash,
+      decidedByLockHash: arbitratorLockHash,
+    })).rejects.toThrow(/must be finalized/);
+
+    const disputeEvent = chainEvent({
+      txHash: disputeTxHash,
+      type: "Disputed",
+      action: "Dispute",
+      fromState: "Delivered",
+      toState: "Disputed",
+      actorRole: "buyer_or_seller",
+    });
+    await storage.upsertEscrow(createIndexedEscrow({
+      network: "testnet",
+      origin,
+      decoded: decoded("Disputed"),
+      events: [disputeEvent],
+    }));
+    await storage.reconcileDisputeChainStatus("testnet");
 
     const withEvidence = await storage.addDisputeEvidence({
       network: "testnet",
@@ -271,13 +350,37 @@ describe("dispute evidence cases", () => {
       escrowId: `${origin.txHash}:0`,
       outcome: "seller",
       decisionNote: "Seller provided sufficient delivery proof.",
-      resolutionTxHash: `0x${"88".repeat(32)}`,
+      resolutionTxHash,
       decidedByLockHash: arbitratorLockHash,
     });
 
-    expect(resolved.status).toBe("resolved");
+    expect(resolved.status).toBe("open");
+    expect(resolved.chainStatus).toBe("confirmed");
     expect(resolved.decision?.outcome).toBe("seller");
+    expect(resolved.decision?.chainStatus).toBe("pending");
     expect(resolved.decision?.evidenceBundleHash).toBe(resolved.evidenceBundleHash);
+
+    const resolutionEvent = chainEvent({
+      txHash: resolutionTxHash,
+      type: "ResolvedToSeller",
+      action: "ResolveToSeller",
+      fromState: "Disputed",
+      toState: "Resolved",
+      actorRole: "arbitrator",
+      recipientRole: "seller",
+    });
+    await storage.upsertEscrow(createIndexedEscrow({
+      network: "testnet",
+      origin,
+      current: null,
+      settlementTxHash: resolutionTxHash,
+      decoded: decoded("Resolved"),
+      events: [disputeEvent, resolutionEvent],
+    }));
+    await storage.reconcileDisputeChainStatus("testnet");
+    const finalized = await storage.getDisputeCase("testnet", `${origin.txHash}:0`);
+    expect(finalized).toMatchObject({ status: "resolved", chainStatus: "confirmed" });
+    expect(finalized?.decision).toMatchObject({ chainStatus: "confirmed" });
   });
 });
 
@@ -347,6 +450,21 @@ describe("canonical dispute reconciliation", () => {
         submittedByLockHash: buyerLockHash,
       }],
     });
+    const disputeEvent = chainEvent({
+      txHash: disputeTxHash,
+      type: "Disputed",
+      action: "Dispute",
+      fromState: "Delivered",
+      toState: "Disputed",
+      actorRole: "buyer_or_seller",
+    });
+    await storage.upsertEscrow(createIndexedEscrow({
+      network: "testnet",
+      origin,
+      decoded: decoded("Disputed"),
+      events: [disputeEvent],
+    }));
+    await storage.reconcileDisputeChainStatus("testnet");
     await storage.saveArbitratorDecision({
       network: "testnet",
       escrowId,
@@ -373,38 +491,16 @@ describe("canonical dispute reconciliation", () => {
       settlementTxHash: resolutionTxHash,
       decoded: decoded("Resolved"),
       events: [
-        {
-          id: `${disputeTxHash}:Disputed`,
-          escrowId,
-          network: "testnet",
-          type: "Disputed",
-          txHash: disputeTxHash,
-          blockNumber: "201",
-          blockHash: `0x${"bc".repeat(32)}`,
-          blockTimestamp: "1790000000000",
-          fromState: "Delivered",
-          toState: "Disputed",
-          action: "Dispute",
-          actorRole: "buyer_or_seller",
-          recipientRole: null,
-          createdAt: "2026-09-20T00:00:00.000Z",
-        },
-        {
-          id: `${resolutionTxHash}:ResolvedToSeller`,
-          escrowId,
-          network: "testnet",
-          type: "ResolvedToSeller",
+        disputeEvent,
+        chainEvent({
           txHash: resolutionTxHash,
-          blockNumber: "202",
-          blockHash: `0x${"cd".repeat(32)}`,
-          blockTimestamp: "1790000100000",
+          type: "ResolvedToSeller",
+          action: "ResolveToSeller",
           fromState: "Disputed",
           toState: "Resolved",
-          action: "ResolveToSeller",
           actorRole: "arbitrator",
           recipientRole: "seller",
-          createdAt: "2026-09-20T00:01:40.000Z",
-        },
+        }),
       ],
     });
     await storage.replaceCanonicalSnapshot("testnet", [confirmed], {

@@ -599,6 +599,9 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           if (!disputeCase) {
             throw new Error("Create or load the dispute evidence case before resolving this deal.");
           }
+          if (disputeCase.chainStatus !== "confirmed") {
+            throw new Error("Wait for the dispute transaction to reach the indexer's confirmation depth before resolving.");
+          }
           if (!decisionNote.trim()) {
             throw new Error("Add an arbitrator decision note before resolving this dispute.");
           }
@@ -632,6 +635,9 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
         case "ResolveToSeller":
           if (!disputeCase) {
             throw new Error("Create or load the dispute evidence case before resolving this deal.");
+          }
+          if (disputeCase.chainStatus !== "confirmed") {
+            throw new Error("Wait for the dispute transaction to reach the indexer's confirmation depth before resolving.");
           }
           if (!decisionNote.trim()) {
             throw new Error("Add an arbitrator decision note before resolving this dispute.");
@@ -893,6 +899,11 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                         The dispute transaction is no longer on the canonical CKB chain. Evidence is preserved, but resolution is paused until the dispute is confirmed again.
                       </div>
                     ) : null}
+                    {disputeCase.chainStatus === "pending" ? (
+                      <div className="mt-4 rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                        The dispute is committed and waiting for canonical confirmation. Evidence is available, but arbitration remains paused until the indexer finalizes it.
+                      </div>
+                    ) : null}
                     {disputeCase.decision?.chainStatus === "orphaned" ? (
                       <div className="mt-4 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm leading-6 text-destructive">
                         The previous resolution transaction was reorganized out of the chain. This case has returned to review.
@@ -991,7 +1002,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                     ? Boolean(participantScripts[requirement.lockHash])
                     : true;
                   const requiresConfirmedDispute = action.action === "ResolveToBuyer" || action.action === "ResolveToSeller";
-                  const disputeConfirmed = disputeCase?.chainStatus !== "orphaned";
+                  const disputeConfirmed = disputeCase?.chainStatus === "confirmed";
                   const inProduct = canExecuteInProduct(
                     action,
                     Boolean(service),

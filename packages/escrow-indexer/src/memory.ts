@@ -106,7 +106,17 @@ export class MemoryEscrowIndexerStorage implements EscrowIndexerStorage {
     }
     this.checkpoints.set(network, checkpoint);
 
-    const events = records.flatMap((record) => record.events);
+    this.reconcileDisputeCases(network, true);
+  }
+
+  async reconcileDisputeChainStatus(network: IndexedEscrowNetwork): Promise<void> {
+    this.reconcileDisputeCases(network, false);
+  }
+
+  private reconcileDisputeCases(network: IndexedEscrowNetwork, missingIsOrphaned: boolean): void {
+    const events = Array.from(this.records.values())
+      .filter((record) => record.network === network)
+      .flatMap((record) => record.events);
     for (const [key, disputeCase] of this.disputeCases) {
       if (disputeCase.network !== network) continue;
       const disputeConfirmed = events.some(
@@ -120,16 +130,18 @@ export class MemoryEscrowIndexerStorage implements EscrowIndexerStorage {
           )
         : false;
       const orphanedAt = new Date().toISOString();
+      const missingCaseStatus = missingIsOrphaned || disputeCase.chainStatus === "orphaned" ? "orphaned" : "pending";
+      const missingDecisionStatus = missingIsOrphaned || disputeCase.decision?.chainStatus === "orphaned" ? "orphaned" : "pending";
       this.disputeCases.set(key, {
         ...disputeCase,
         status: disputeConfirmed && decisionConfirmed ? "resolved" : "open",
-        chainStatus: disputeConfirmed ? "confirmed" : "orphaned",
-        orphanedAt: disputeConfirmed ? null : disputeCase.orphanedAt ?? orphanedAt,
+        chainStatus: disputeConfirmed ? "confirmed" : missingCaseStatus,
+        orphanedAt: disputeConfirmed || missingCaseStatus === "pending" ? null : disputeCase.orphanedAt ?? orphanedAt,
         decision: disputeCase.decision
           ? {
               ...disputeCase.decision,
-              chainStatus: decisionConfirmed ? "confirmed" : "orphaned",
-              orphanedAt: decisionConfirmed ? null : disputeCase.decision.orphanedAt ?? orphanedAt,
+              chainStatus: decisionConfirmed ? "confirmed" : missingDecisionStatus,
+              orphanedAt: decisionConfirmed || missingDecisionStatus === "pending" ? null : disputeCase.decision.orphanedAt ?? orphanedAt,
             }
           : null,
       });
@@ -168,6 +180,9 @@ export class MemoryEscrowIndexerStorage implements EscrowIndexerStorage {
     const existing = await this.getDisputeCase(input.network, input.escrowId);
     if (!existing) {
       throw new Error(`Dispute case not found for escrow ${input.escrowId}`);
+    }
+    if (existing.chainStatus !== "confirmed") {
+      throw new Error("The dispute transaction must be finalized before an arbitrator decision can be saved");
     }
     const escrow = await this.getEscrow({ network: input.network, escrowId: input.escrowId });
     if (!escrow || !isArbitrator(escrow, input.decidedByLockHash)) {

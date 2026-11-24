@@ -16,7 +16,7 @@ export type IndexedEscrowEventType =
 
 export type DisputeRequestedOutcome = "buyer" | "seller";
 export type DisputeCaseStatus = "open" | "resolved";
-export type DisputeChainStatus = "confirmed" | "orphaned";
+export type DisputeChainStatus = "pending" | "confirmed" | "orphaned";
 export type DisputeEvidenceType = "statement" | "link" | "file";
 
 export interface IndexedOutPoint {
@@ -182,6 +182,7 @@ export interface EscrowIndexerStorage {
     records: IndexedEscrowRecord[],
     checkpoint: CanonicalSnapshotCheckpoint,
   ): Promise<void>;
+  reconcileDisputeChainStatus?(network: IndexedEscrowNetwork): Promise<void>;
 }
 
 export interface CreateIndexedEscrowInput {

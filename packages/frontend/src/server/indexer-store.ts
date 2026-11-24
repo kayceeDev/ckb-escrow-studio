@@ -2,6 +2,7 @@ import * as ccc from "@ckb-ccc/ccc";
 import {
   MemoryEscrowIndexerStorage,
   MemoryIndexerCoordinator,
+  IndexerCoordinatorStorageError,
   PostgresEscrowIndexerStorage,
   PostgresIndexerCoordinator,
   syncCanonicalEscrowHistory,
@@ -92,10 +93,46 @@ class ProductionEscrowIndexerStorage implements EscrowIndexerStorage {
     }
     return this.run(() => this.storage.replaceCanonicalSnapshot!(network, records, checkpoint));
   }
+  reconcileDisputeChainStatus(network: IndexedEscrowNetwork) {
+    if (!this.storage.reconcileDisputeChainStatus) return Promise.resolve();
+    return this.run(() => this.storage.reconcileDisputeChainStatus!(network));
+  }
+}
+
+class ProductionIndexerCoordinator implements IndexerCoordinator {
+  constructor(private readonly coordinator: IndexerCoordinator) {}
+
+  private async run<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof IndexerCoordinatorStorageError) {
+        throw new IndexerStorageUnavailableError(error.message, { cause: error });
+      }
+      throw error;
+    }
+  }
+
+  withLock<T>(network: IndexedEscrowNetwork, task: () => Promise<T>) {
+    return this.run(() => this.coordinator.withLock(network, task));
+  }
+  getCheckpoint(network: IndexedEscrowNetwork) {
+    return this.run(() => this.coordinator.getCheckpoint(network));
+  }
+  saveCheckpoint(network: IndexedEscrowNetwork, checkpoint: Parameters<IndexerCoordinator["saveCheckpoint"]>[1]) {
+    return this.run(() => this.coordinator.saveCheckpoint(network, checkpoint));
+  }
+  saveError(network: IndexedEscrowNetwork, message: string) {
+    return this.run(() => this.coordinator.saveError(network, message));
+  }
 }
 
 export function __wrapIndexerStorageForTests(storage: EscrowIndexerStorage): EscrowIndexerStorage {
   return new ProductionEscrowIndexerStorage(storage);
+}
+
+export function __wrapIndexerCoordinatorForTests(coordinator: IndexerCoordinator): IndexerCoordinator {
+  return new ProductionIndexerCoordinator(coordinator);
 }
 
 declare global {
@@ -123,9 +160,10 @@ function createManagedStorage(): ManagedIndexerStorage {
   }
 
   const postgresStorage = new PostgresEscrowIndexerStorage({ connectionString: database.url });
+  const postgresCoordinator = new PostgresIndexerCoordinator({ connectionString: database.url });
   return {
     storage: isProductionRuntime() ? new ProductionEscrowIndexerStorage(postgresStorage) : postgresStorage,
-    coordinator: new PostgresIndexerCoordinator({ connectionString: database.url }),
+    coordinator: isProductionRuntime() ? new ProductionIndexerCoordinator(postgresCoordinator) : postgresCoordinator,
     status: {
       configuredStorage: "postgres",
       activeStorage: "postgres",
@@ -138,36 +176,6 @@ function createManagedStorage(): ManagedIndexerStorage {
 function getManagedStorage(): ManagedIndexerStorage {
   globalThis.__ckbEscrowIndexerManagedStorage ??= createManagedStorage();
   return globalThis.__ckbEscrowIndexerManagedStorage;
-}
-
-function degradeToMemory(error: unknown): EscrowIndexerStorage {
-  if (error instanceof IndexerStorageUnavailableError) throw error;
-  if (!isDatabaseRuntimeError(error)) throw error;
-
-  const message = error instanceof Error ? error.message : String(error);
-  const managed = getManagedStorage();
-
-  if (isProductionRuntime()) {
-    const errorMessage = `Postgres indexer storage is unavailable: ${message}`;
-    managed.status = {
-      configuredStorage: managed.status.configuredStorage,
-      activeStorage: managed.status.activeStorage,
-      degraded: true,
-      error: errorMessage,
-    };
-    throw new IndexerStorageUnavailableError(errorMessage, { cause: error });
-  }
-
-  managed.storage = new MemoryEscrowIndexerStorage();
-  managed.coordinator = new MemoryIndexerCoordinator();
-  managed.status = {
-    configuredStorage: managed.status.configuredStorage,
-    activeStorage: "memory",
-    degraded: true,
-    error: `Postgres indexer storage is unavailable, using development memory fallback: ${message}`,
-  };
-
-  return managed.storage;
 }
 
 export function getEscrowIndexerStorage(): EscrowIndexerStorage {
@@ -193,30 +201,16 @@ function typeScriptForNetwork(network: IndexedEscrowNetwork): ccc.ScriptLike | n
 
 async function scanWithStorage(network: IndexedEscrowNetwork, typeScript: ccc.ScriptLike): Promise<void> {
   const managed = getManagedStorage();
-  try {
-    await syncCanonicalEscrowHistory({
-      network,
-      client: NETWORK_CLIENTS[network] as unknown as CanonicalScannerClient,
-      deployment: { typeScript },
-      storage: managed.storage,
-      coordinator: managed.coordinator,
-      deploymentBlock: BigInt(process.env.CKB_ESCROW_TESTNET_DEPLOYMENT_BLOCK ?? "22272848"),
-      confirmations: BigInt(process.env.CKB_ESCROW_INDEXER_CONFIRMATIONS ?? "12"),
-      pageSize: Number(process.env.CKB_ESCROW_INDEXER_PAGE_SIZE ?? "100"),
-    });
-  } catch (error) {
-    const fallbackStorage = degradeToMemory(error);
-    await syncCanonicalEscrowHistory({
-      network,
-      client: NETWORK_CLIENTS[network] as unknown as CanonicalScannerClient,
-      deployment: { typeScript },
-      storage: fallbackStorage,
-      coordinator: getManagedStorage().coordinator,
-      deploymentBlock: BigInt(process.env.CKB_ESCROW_TESTNET_DEPLOYMENT_BLOCK ?? "22272848"),
-      confirmations: BigInt(process.env.CKB_ESCROW_INDEXER_CONFIRMATIONS ?? "12"),
-      pageSize: Number(process.env.CKB_ESCROW_INDEXER_PAGE_SIZE ?? "100"),
-    });
-  }
+  await syncCanonicalEscrowHistory({
+    network,
+    client: NETWORK_CLIENTS[network] as unknown as CanonicalScannerClient,
+    deployment: { typeScript },
+    storage: managed.storage,
+    coordinator: managed.coordinator,
+    deploymentBlock: BigInt(process.env.CKB_ESCROW_TESTNET_DEPLOYMENT_BLOCK ?? "22272848"),
+    confirmations: BigInt(process.env.CKB_ESCROW_INDEXER_CONFIRMATIONS ?? "12"),
+    pageSize: Number(process.env.CKB_ESCROW_INDEXER_PAGE_SIZE ?? "100"),
+  });
 }
 
 export async function syncEscrowIndexer(network: IndexedEscrowNetwork): Promise<void> {

@@ -148,4 +148,15 @@ describe("postgres escrow indexer storage", () => {
     expect(texts.some((text) => text.includes("update dispute_cases"))).toBe(true);
     expect(texts.at(-1)).toBe("commit");
   });
+
+  it("promotes pending dispute metadata only when finalized events exist", async () => {
+    const pool = new FakePool();
+    const storage = new PostgresEscrowIndexerStorage({ pool: pool as never });
+    await storage.reconcileDisputeChainStatus("testnet");
+
+    const texts = pool.client.queries.map((query) => query.text);
+    expect(texts.some((text) => text.includes("else 'pending' end"))).toBe(true);
+    expect(texts.some((text) => text.includes("decision.chain_status = 'confirmed'"))).toBe(true);
+    expect(texts.at(-1)).toBe("commit");
+  });
 });

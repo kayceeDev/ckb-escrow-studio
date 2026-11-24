@@ -119,4 +119,35 @@ describe("indexer storage runtime selection", () => {
       consumedAt: null,
     })).rejects.toBeInstanceOf(DisputeAuthUnavailableError);
   });
+
+  it("preserves CKB network errors raised inside the coordinated scan task", async () => {
+    const { __wrapIndexerCoordinatorForTests, IndexerStorageUnavailableError } = await import("./indexer-store");
+    const chainError = Object.assign(new Error("CKB RPC connection reset"), { code: "ECONNRESET" });
+    const coordinator = __wrapIndexerCoordinatorForTests({
+      async withLock(_network, task) { return { acquired: true, result: await task() }; },
+      async getCheckpoint() { return null; },
+      async saveCheckpoint() {},
+      async saveError() {},
+    });
+
+    const result = coordinator.withLock("testnet", async () => { throw chainError; });
+    await expect(result).rejects.toBe(chainError);
+    await expect(result).rejects.not.toBeInstanceOf(IndexerStorageUnavailableError);
+  });
+
+  it("converts tagged Postgres coordinator failures into a production 503 error", async () => {
+    const [{ IndexerCoordinatorStorageError }, { __wrapIndexerCoordinatorForTests, IndexerStorageUnavailableError }] = await Promise.all([
+      import("@ckb-escrow/indexer"),
+      import("./indexer-store"),
+    ]);
+    const coordinator = __wrapIndexerCoordinatorForTests({
+      async withLock() { throw new IndexerCoordinatorStorageError("database lock failed"); },
+      async getCheckpoint() { return null; },
+      async saveCheckpoint() {},
+      async saveError() {},
+    });
+
+    await expect(coordinator.withLock("testnet", async () => undefined))
+      .rejects.toBeInstanceOf(IndexerStorageUnavailableError);
+  });
 });

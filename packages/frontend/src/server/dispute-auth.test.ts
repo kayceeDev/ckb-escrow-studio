@@ -32,7 +32,7 @@ async function ckbProof(store: MemoryDisputeAuthNonceStore, action: "create" | "
   };
 }
 
-function storage() {
+function storage(events: unknown[] = []) {
   return {
     async getEscrow() {
       return {
@@ -53,21 +53,30 @@ function storage() {
         createdAt: new Date(0).toISOString(),
         updatedAt: new Date(0).toISOString(),
         closedAt: null,
-        events: [],
+        events,
       };
     },
   };
 }
 
-function client(action: "Dispute" | "ResolveToBuyer" | "ResolveToSeller", committed = true) {
+function client(
+  action: "Dispute" | "ResolveToBuyer" | "ResolveToSeller",
+  committed = true,
+  decoyAction?: "Dispute" | "ResolveToBuyer" | "ResolveToSeller",
+) {
   return {
     async getTransactionWithHeader() {
       return {
         transaction: {
           blockNumber: committed ? 100n : null,
           transaction: {
-            inputs: [{ previousOutput: { txHash: currentTxHash, index: 1n } }],
-            witnesses: [witness(action)],
+            inputs: decoyAction
+              ? [
+                  { previousOutput: { txHash: `0x${"dd".repeat(32)}`, index: 0n } },
+                  { previousOutput: { txHash: currentTxHash, index: 1n } },
+                ]
+              : [{ previousOutput: { txHash: currentTxHash, index: 1n } }],
+            witnesses: decoyAction ? [witness(decoyAction), witness(action)] : [witness(action)],
           },
         },
         header: committed ? { number: 100n } : null,
@@ -167,5 +176,27 @@ describe("dispute tx verification", () => {
       expectedAction: "ResolveToBuyer",
       client: client("ResolveToSeller") as never,
     })).rejects.toThrow(/does not match ResolveToBuyer/);
+  });
+
+  it("reads the witness for the escrow input instead of an earlier decoy input", async () => {
+    await expect(verifyDisputeTransactionHash({
+      network: "testnet",
+      storage: storage() as never,
+      escrowId,
+      txHash,
+      expectedAction: "Dispute",
+      client: client("ResolveToSeller", true, "Dispute") as never,
+    })).rejects.toThrow(/ResolveToSeller does not match Dispute/);
+  });
+
+  it("does not trust an indexed event when the submitted transaction is uncommitted", async () => {
+    await expect(verifyDisputeTransactionHash({
+      network: "testnet",
+      storage: storage([{ txHash, action: "Dispute" }]) as never,
+      escrowId,
+      txHash,
+      expectedAction: "Dispute",
+      client: client("Dispute", false) as never,
+    })).rejects.toThrow(/not committed/);
   });
 });
