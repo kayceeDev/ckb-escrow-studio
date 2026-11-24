@@ -61,6 +61,7 @@ export class EscrowService {
 
   private async finalizeAndSend(
     tx: ccc.Transaction,
+    action: "Create" | "Deliver" | "Dispute",
     feeRate?: ccc.NumLike,
     escrowInput?: ccc.CellLike,
   ): Promise<ccc.Hex> {
@@ -73,6 +74,8 @@ export class EscrowService {
       signer: this.signer,
       client: this.client,
       deployment: this.deployment,
+      transaction: tx,
+      action,
       ...(escrowInput ? { escrowInput } : {}),
     });
     return this.signer.sendTransaction(tx as unknown as ccc.TransactionLike);
@@ -93,7 +96,18 @@ export class EscrowService {
       context,
       feeRate === undefined ? undefined : { feeRate },
     );
-    await runEscrowPreflight({ signer: this.signer, client: this.client, deployment: this.deployment, escrowInput: context.escrowInput });
+    await runEscrowPreflight({
+      signer: this.signer,
+      client: this.client,
+      deployment: this.deployment,
+      transaction: tx,
+      action: context.action,
+      escrowInput: context.escrowInput,
+      settlement: {
+        action: context.action,
+        recipientLock: context.recipientLock,
+      },
+    });
     return this.signer.sendTransaction(tx as unknown as ccc.TransactionLike);
   }
 
@@ -107,7 +121,7 @@ export class EscrowService {
 
   async sendCreateEscrow(params: EscrowServiceCreateParams): Promise<ccc.Hex> {
     const tx = await this.buildCreateEscrow(params);
-    return this.finalizeAndSend(tx, params.feeRate);
+    return this.finalizeAndSend(tx, "Create", params.feeRate);
   }
 
   buildDeliver(escrowInput: ccc.CellLike): ccc.Transaction {
@@ -130,7 +144,7 @@ export class EscrowService {
     feeRate?: ccc.NumLike,
   ): Promise<ccc.Hex> {
     const tx = await this.buildDeliverWithSignerInput(escrowInput);
-    return this.finalizeAndSend(tx, feeRate, escrowInput);
+    return this.finalizeAndSend(tx, "Deliver", feeRate, escrowInput);
   }
 
   buildDispute(escrowInput: ccc.CellLike): ccc.Transaction {
@@ -153,7 +167,7 @@ export class EscrowService {
     feeRate?: ccc.NumLike,
   ): Promise<ccc.Hex> {
     const tx = await this.buildDisputeWithSignerInput(escrowInput);
-    return this.finalizeAndSend(tx, feeRate, escrowInput);
+    return this.finalizeAndSend(tx, "Dispute", feeRate, escrowInput);
   }
 
   async buildCancel(
