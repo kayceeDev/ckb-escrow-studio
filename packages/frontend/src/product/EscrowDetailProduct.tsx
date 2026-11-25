@@ -31,7 +31,6 @@ import {
   getIndexedCurrentOutPointForRoute,
   indexedEscrowReceiptRouteId,
   mergeProductEscrowRecords,
-  productEscrowRouteId,
   toIndexedProductEscrow,
   toLiveProductEscrow,
 } from "./contract";
@@ -42,6 +41,14 @@ import { findUpdatedEscrowRecord, pollForEscrowUpdate } from "./polling";
 import { scriptHashFromStored, scriptLikeFromStored, storedScriptFromScriptLike } from "./registry";
 import { createEscrowInput } from "./utils";
 import { collectEscrowTransactionEvidence } from "./transaction-evidence";
+import {
+  expectedStateForTransactionAction,
+  isIndexedLifecycleConfirmation,
+  reduceTransactionLifecycle,
+  transactionLifecycleCopy,
+  type TransactionLifecycle,
+  type TransactionLifecycleEvent,
+} from "./transaction-lifecycle";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
 function ActionBadge({ source }: { source: ProductEscrowRecord["source"] }) {
@@ -107,6 +114,51 @@ function recipientRequirementForAction(
 
 function shortHash(value: string): string {
   return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-8)}` : value;
+}
+
+function TransactionLifecycleBanner({
+  lifecycle,
+  network,
+}: {
+  lifecycle: TransactionLifecycle;
+  network: "testnet" | "mainnet";
+}) {
+  const copy = transactionLifecycleCopy(lifecycle);
+  const active = lifecycle.stage !== "confirmed" && lifecycle.stage !== "failed";
+
+  return (
+    <div
+      className={`rounded-[1.25rem] border p-4 ${
+        copy.tone === "success"
+          ? "border-primary/25 bg-primary/8"
+          : copy.tone === "destructive"
+            ? "border-destructive/25 bg-destructive/5"
+            : "border-amber-300/60 bg-amber-50"
+      }`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={copy.tone}>{copy.title}</Badge>
+            {active ? <Badge variant="outline">Updating automatically</Badge> : null}
+          </div>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">{copy.detail}</p>
+          {lifecycle.txHash ? (
+            <p className="mt-2 break-all font-mono text-xs text-foreground">{lifecycle.txHash}</p>
+          ) : null}
+        </div>
+        {lifecycle.txHash ? (
+          <Button asChild variant="outline" size="sm">
+            <Link href={createExplorerTxUrl(lifecycle.txHash, network)} target="_blank" rel="noreferrer">
+              Explorer <ExternalLink className="h-4 w-4" />
+            </Link>
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 interface FileEvidenceDraft {
@@ -222,6 +274,15 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     escrowId: string;
     record: ProductEscrowRecord;
   } | null>(null);
+  const [pendingRecord, setPendingRecord] = useState<{
+    escrowId: string;
+    record: ProductEscrowRecord;
+  } | null>(null);
+  const [transactionLifecycle, setTransactionLifecycle] = useState<TransactionLifecycle | null>(null);
+  const [completionNotice, setCompletionNotice] = useState<string | null>(null);
+  const transactionBlocksActions = transactionLifecycle != null
+    && transactionLifecycle.stage !== "confirmed"
+    && transactionLifecycle.stage !== "failed";
 
   useEffect(() => {
     if (!deploymentReady || isFetchingEscrows || hasFetchedEscrows) {
@@ -251,7 +312,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     () => indexedEscrows.find((escrow) => escrow.id === escrowId) ?? indexedDetail,
     [escrowId, indexedDetail, indexedEscrows],
   );
-  const record = useMemo(() => {
+  const currentRecord = useMemo(() => {
     if (liveItem) {
       return toLiveProductEscrow(liveItem, activeLockHash, chainTipTimestampMs);
     }
@@ -269,8 +330,12 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     [indexedItem, lastTxHash, liveItem],
   );
   const hasLastKnownRecord = lastKnownRecord?.escrowId === escrowId;
+  const pendingRecordForRoute = pendingRecord?.escrowId === escrowId ? pendingRecord.record : null;
+  const record = pendingRecordForRoute
+    ?? currentRecord
+    ?? (hasLastKnownRecord ? lastKnownRecord.record : null);
   const detailLoadState = getEscrowDetailLoadState({
-    hasRecord: record !== null,
+    hasRecord: currentRecord !== null || pendingRecordForRoute !== null,
     hasLastKnownRecord,
     submittedTxHash: lastTxHash || null,
     isFetchingEscrows,
@@ -280,8 +345,46 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   });
 
   useEffect(() => {
-    if (record) setLastKnownRecord({ escrowId, record });
-  }, [escrowId, record]);
+    if (currentRecord) setLastKnownRecord({ escrowId, record: currentRecord });
+  }, [currentRecord, escrowId]);
+
+  useEffect(() => {
+    if (
+      currentRecord
+      && pendingRecordForRoute
+      && currentRecord.state === pendingRecordForRoute.state
+      && currentRecord.currentId === pendingRecordForRoute.currentId
+    ) {
+      setPendingRecord(null);
+    }
+  }, [currentRecord, pendingRecordForRoute]);
+
+  useEffect(() => {
+    if (!completionNotice) return;
+    const timeout = window.setTimeout(() => setCompletionNotice(null), 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [completionNotice]);
+
+  useEffect(() => {
+    if (transactionLifecycle?.stage !== "confirmed") return;
+    const timeout = window.setTimeout(() => setTransactionLifecycle(null), 6_000);
+    return () => window.clearTimeout(timeout);
+  }, [transactionLifecycle]);
+
+  useEffect(() => {
+    if (!transactionLifecycle || !indexedItem) return;
+    const expectedState = pendingRecordForRoute?.state
+      ?? expectedStateForTransactionAction(transactionLifecycle.action);
+    if (!isIndexedLifecycleConfirmation(transactionLifecycle, expectedState, indexedItem)) return;
+
+    dispatchTransactionLifecycle({ type: "confirmed", state: indexedItem.state });
+    setCompletionNotice(`Escrow updated to ${indexedItem.state}.`);
+    setStatus(`Escrow confirmed as ${indexedItem.state}.`);
+  }, [indexedItem, pendingRecordForRoute, transactionLifecycle]);
+
+  function dispatchTransactionLifecycle(event: TransactionLifecycleEvent) {
+    setTransactionLifecycle((current) => reduceTransactionLifecycle(current, event));
+  }
   const buyerStoredScript = useMemo(
     () => (record ? participantScripts[record.buyerLockHash] ?? null : null),
     [participantScripts, record],
@@ -474,8 +577,12 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       return;
     }
 
+    let txHash = "";
     try {
       setBusyAction("Dispute");
+      dispatchTransactionLifecycle({ type: "start", action: "Dispute" });
+      setCompletionNotice(null);
+      setLastTxHash("");
       setStatus("Signing dispute evidence authorization...");
       const auth = await productDisputeClient.createAuthProof({
         network,
@@ -485,8 +592,9 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
         signer: walletState.activeSigner,
       });
       setStatus("Submitting dispute transaction...");
-      const txHash = await service.sendDispute(createEscrowInput(liveItem, deployment));
+      txHash = await service.sendDispute(createEscrowInput(liveItem, deployment));
       setLastTxHash(txHash);
+      dispatchTransactionLifecycle({ type: "submitted", txHash });
       const saved = await productDisputeClient.createDisputeCase({
         network,
         escrowId,
@@ -503,7 +611,15 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       await pollAfterAction({ txHash, previousRecord: record, expectedTerminal: false });
     } catch (error) {
       const { detail, hint } = formatEscrowError(error);
-      setStatus(hint ? `${detail} ${hint}` : detail);
+      const message = hint ? `${detail} ${hint}` : detail;
+      if (txHash) {
+        setLastTxHash(txHash);
+        dispatchTransactionLifecycle({ type: "submitted", txHash });
+        setStatus(`Transaction ${shortHash(txHash)} was submitted, but the evidence record could not be saved. ${message}`);
+      } else {
+        dispatchTransactionLifecycle({ type: "failed", error: message });
+        setStatus(message);
+      }
     } finally {
       setBusyAction(null);
     }
@@ -558,11 +674,27 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     expectedTerminal: boolean;
   }) {
     setStatus("Transaction submitted, waiting for CKB/indexer confirmation...");
+    let committedObserved = false;
     const result = await pollForEscrowUpdate({
       previousRecord: input.previousRecord,
       submittedTxHash: input.txHash,
       expectedTerminal: input.expectedTerminal,
       refresh: async () => {
+        const transaction = await client.getTransactionNoCache(input.txHash).catch(() => undefined);
+        if (transaction) {
+          dispatchTransactionLifecycle({
+            type: "ckb-status",
+            status: transaction.status,
+            ...(transaction.reason ? { reason: transaction.reason } : {}),
+          });
+          if (transaction.status === "rejected") {
+            throw new Error(transaction.reason ?? "CKB rejected this transaction.");
+          }
+          if (transaction.status === "committed") {
+            if (committedObserved) dispatchTransactionLifecycle({ type: "indexing" });
+            committedObserved = true;
+          }
+        }
         const refreshed = await refreshEscrows();
         const liveRecords = refreshed.live.map((escrow) => toLiveProductEscrow(escrow, activeLockHash, chainTipTimestampMs));
         const indexedRecords = refreshed.indexed.map((escrow) => toIndexedProductEscrow(escrow, activeLockHash, chainTipTimestampMs));
@@ -571,6 +703,14 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     });
 
     if (result.status === "updated") {
+      setPendingRecord({ escrowId, record: result.record });
+      if (result.record.source === "indexed") {
+        dispatchTransactionLifecycle({ type: "confirmed", state: result.record.state });
+        setCompletionNotice(`${input.previousRecord.state} updated to ${result.record.state}.`);
+      } else {
+        dispatchTransactionLifecycle({ type: "ckb-status", status: "committed" });
+        dispatchTransactionLifecycle({ type: "indexing" });
+      }
       const receiptRouteId = input.expectedTerminal ? indexedEscrowReceiptRouteId(result.record) : null;
       if (receiptRouteId) {
         setStatus(`Escrow closed as ${result.record.state}. Opening indexed read-only receipt...`);
@@ -578,14 +718,15 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
         return;
       }
 
-      setStatus(`Escrow updated to ${result.record.state}.`);
-      const nextRouteId = productEscrowRouteId(result.record);
-      if (nextRouteId !== escrowId) {
-        router.replace(`/escrows/${encodeURIComponent(nextRouteId)}`);
-      }
+      setStatus(
+        result.record.source === "indexed"
+          ? `Escrow confirmed as ${result.record.state}.`
+          : `${result.record.state} observed on CKB. Waiting for indexer confirmation.`,
+      );
       return;
     }
 
+    if (committedObserved) dispatchTransactionLifecycle({ type: "indexing" });
     setStatus("Still waiting for the new escrow state. You can refresh manually.");
   }
 
@@ -594,12 +735,14 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       return;
     }
 
+    let txHash = "";
     try {
       setBusyAction(action);
       setStatus(`${action} in progress...`);
+      dispatchTransactionLifecycle({ type: "start", action });
+      setCompletionNotice(null);
+      setLastTxHash("");
       const cell = createEscrowInput(liveItem, deployment);
-      let txHash = "";
-
       switch (action) {
         case "Deliver":
           txHash = await service.sendDeliver(cell);
@@ -707,6 +850,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       }
 
       setLastTxHash(txHash);
+      dispatchTransactionLifecycle({ type: "submitted", txHash });
       const isTerminalAction = ["Cancel", "Refund", "Complete", "ResolveToBuyer", "ResolveToSeller"].includes(action);
       setStatus(
         isTerminalAction
@@ -716,7 +860,15 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       await pollAfterAction({ txHash, previousRecord: record, expectedTerminal: isTerminalAction });
     } catch (error) {
       const { detail, hint } = formatEscrowError(error);
-      setStatus(hint ? `${detail} ${hint}` : detail);
+      const message = hint ? `${detail} ${hint}` : detail;
+      if (txHash) {
+        setLastTxHash(txHash);
+        dispatchTransactionLifecycle({ type: "submitted", txHash });
+        setStatus(`Transaction ${shortHash(txHash)} was submitted, but a follow-up request failed. ${message}`);
+      } else {
+        dispatchTransactionLifecycle({ type: "failed", error: message });
+        setStatus(message);
+      }
     } finally {
       setBusyAction(null);
     }
@@ -804,7 +956,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     );
   }
 
-  if (detailLoadState === "confirming" || detailLoadState === "synchronizing") {
+  if ((detailLoadState === "confirming" || detailLoadState === "synchronizing") && !record) {
     const previousState = hasLastKnownRecord ? lastKnownRecord.record.state : null;
     return (
       <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
@@ -876,6 +1028,22 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
         <Badge variant={record.state === "Disputed" ? "destructive" : "success"}>{record.state}</Badge>
         <Badge variant="secondary">{record.viewerRole}</Badge>
         <ActionBadge source={record.source} />
+      </div>
+
+      <div className="mb-6 space-y-3">
+        {transactionLifecycle ? (
+          <TransactionLifecycleBanner lifecycle={transactionLifecycle} network={network} />
+        ) : detailLoadState === "synchronizing" ? (
+          <div className="rounded-[1.25rem] border border-amber-300/60 bg-amber-50 p-4" role="status" aria-live="polite">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">Updating escrow state</Badge>
+              <Badge variant="outline">Last confirmed view retained</Badge>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+              The current cell changed and the replacement state is still being synchronized. This page will update automatically.
+            </p>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_360px]">
@@ -1108,7 +1276,12 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                   const inProduct = canExecuteInProduct(
                     action,
                     Boolean(service),
-                    record.source === "live",
+                    Boolean(
+                      !transactionBlocksActions
+                      && currentRecord
+                      && liveItem
+                      && currentRecord.state === record.state,
+                    ),
                     { buyer: hasBuyerScript, seller: hasSellerScript },
                   ) && (!requiresConfirmedDispute || disputeConfirmed);
 
@@ -1277,6 +1450,21 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
           </Card>
         </div>
       </div>
+      {completionNotice ? (
+        <div
+          className="fixed bottom-5 left-4 right-4 z-50 rounded-lg border border-primary/25 bg-white p-4 shadow-xl sm:left-auto sm:right-5 sm:max-w-sm"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <div>
+              <p className="font-semibold text-foreground">Escrow synchronized</p>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">{completionNotice}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
