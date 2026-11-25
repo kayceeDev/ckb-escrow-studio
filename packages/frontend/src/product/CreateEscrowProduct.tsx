@@ -43,7 +43,9 @@ import { storedScriptFromScriptLike } from "./registry";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 import {
   createEscrowReference,
+  estimateCreateEscrowFundingShannons,
   formatCkbBalance,
+  hasInsufficientWalletBalance,
   minimumDeadlineInputValue,
   validateEscrowDeadline,
 } from "./create-escrow-form";
@@ -97,6 +99,8 @@ export function CreateEscrowProduct() {
   const [lastEscrowId, setLastEscrowId] = useState("");
   const [assignedArbitrator, setAssignedArbitrator] = useState<ProductArbitratorConfig | null>(null);
   const [sellerMatchesBuyer, setSellerMatchesBuyer] = useState(false);
+  const [estimatedFundingShannons, setEstimatedFundingShannons] = useState<bigint | null>(null);
+  const [isEstimatingFunding, setIsEstimatingFunding] = useState(false);
 
   const arbitratorPool = useMemo(() => resolveArbitratorPool(network), [network]);
   const hasAvailableArbitratorPool = useMemo(
@@ -107,6 +111,10 @@ export function CreateEscrowProduct() {
   const disputeEvidenceSupported = !walletState.activeSigner || isProductDisputeSignerSupported(walletState.activeSigner);
   const deadlineError = deadline && clockMs ? validateEscrowDeadline(deadline, clockMs) : null;
   const minimumDeadline = clockMs ? minimumDeadlineInputValue(clockMs) : undefined;
+  const insufficientWalletBalance = hasInsufficientWalletBalance(
+    walletBalanceShannons,
+    estimatedFundingShannons,
+  );
 
   useEffect(() => {
     setReferenceId(createEscrowReference());
@@ -196,6 +204,67 @@ export function CreateEscrowProduct() {
     };
   }
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function estimateFunding() {
+      if (
+        !service
+        || !walletState.activeSigner
+        || !assignedArbitrator
+        || !sellerAddress.trim()
+        || !amountCkb.trim()
+        || !deadline
+        || deadlineError
+        || !description.trim()
+      ) {
+        setEstimatedFundingShannons(null);
+        setIsEstimatingFunding(false);
+        return;
+      }
+
+      setIsEstimatingFunding(true);
+      try {
+        const { sellerScript, arbitratorScript } = await resolveScripts();
+        const transaction = await service.buildCreateEscrow({
+          sellerLock: sellerScript,
+          arbitratorLock: arbitratorScript,
+          escrowLock: makeEscrowLock(deployment),
+          amountShannons: parseCkbToShannons(amountCkb),
+          deadlineMs: BigInt(new Date(deadline).getTime()),
+          description: referenceId ? `${referenceId}: ${description}` : description,
+        });
+        const escrowOutput = transaction.outputs[0];
+        if (!escrowOutput) throw new Error("Escrow funding estimate has no output.");
+        if (!cancelled) {
+          setEstimatedFundingShannons(
+            estimateCreateEscrowFundingShannons(escrowOutput.capacity),
+          );
+        }
+      } catch {
+        if (!cancelled) setEstimatedFundingShannons(null);
+      } finally {
+        if (!cancelled) setIsEstimatingFunding(false);
+      }
+    }
+
+    void estimateFunding();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    amountCkb,
+    assignedArbitrator,
+    deadline,
+    deadlineError,
+    deployment,
+    description,
+    referenceId,
+    sellerAddress,
+    service,
+    walletState.activeSigner,
+  ]);
+
   async function saveParticipantScripts() {
     const { buyerScript, sellerScript, arbitratorScript } = await resolveScripts();
     const buyerStored = storedScriptFromScriptLike(buyerScript, "Buyer");
@@ -235,14 +304,26 @@ export function CreateEscrowProduct() {
 
       const fullDescription = referenceId ? `${referenceId}: ${description}` : description;
 
-      const txHash = await service.sendCreateEscrow({
+      const createParams = {
         sellerLock: sellerScript,
         arbitratorLock: arbitratorScript,
         escrowLock: makeEscrowLock(deployment),
         amountShannons,
         deadlineMs,
         description: fullDescription,
-      });
+      };
+      const previewTransaction = await service.buildCreateEscrow(createParams);
+      const escrowOutput = previewTransaction.outputs[0];
+      if (!escrowOutput) throw new Error("Escrow funding estimate has no output.");
+      const currentFundingEstimate = estimateCreateEscrowFundingShannons(escrowOutput.capacity);
+      setEstimatedFundingShannons(currentFundingEstimate);
+      if (hasInsufficientWalletBalance(walletBalanceShannons, currentFundingEstimate)) {
+        throw new Error(
+          `Available balance is below the estimated ${formatCkbBalance(currentFundingEstimate)} CKB required to create this escrow.`,
+        );
+      }
+
+      const txHash = await service.sendCreateEscrow(createParams);
 
       await saveParticipantScripts();
       const refreshedEscrows = await refreshEscrows();
@@ -333,21 +414,36 @@ export function CreateEscrowProduct() {
                 Use the wallet control in the navbar to select the buyer wallet. Buyers do not need to manage technical setup in this flow.
               </p>
               {walletState.activeSigner ? (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">Available wallet balance</p>
+                <div className="mt-3 space-y-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Available wallet balance</p>
+                      <p className="mt-1 font-semibold text-foreground">
+                        {isFetchingWalletBalance
+                          ? "Checking..."
+                          : walletBalanceShannons !== null
+                            ? `${formatCkbBalance(walletBalanceShannons)} CKB`
+                            : "Unavailable"}
+                      </p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => void refreshWalletBalance()} disabled={isFetchingWalletBalance}>
+                      <RefreshCcw className={isFetchingWalletBalance ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                      Refresh
+                    </Button>
+                  </div>
+                  <div className="border-t border-primary/15 pt-3">
+                    <p className="text-xs font-medium text-muted-foreground">Estimated funding requirement</p>
                     <p className="mt-1 font-semibold text-foreground">
-                      {isFetchingWalletBalance
-                        ? "Checking..."
-                        : walletBalanceShannons !== null
-                          ? `${formatCkbBalance(walletBalanceShannons)} CKB`
-                          : "Unavailable"}
+                      {isEstimatingFunding
+                        ? "Calculating..."
+                        : estimatedFundingShannons !== null
+                          ? `${formatCkbBalance(estimatedFundingShannons)} CKB`
+                          : "Complete the escrow terms to calculate"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Includes the escrow amount, occupied cell capacity, and a 1 CKB fee reserve.
                     </p>
                   </div>
-                  <Button type="button" variant="outline" size="sm" onClick={() => void refreshWalletBalance()} disabled={isFetchingWalletBalance}>
-                    <RefreshCcw className={isFetchingWalletBalance ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-                    Refresh
-                  </Button>
                 </div>
               ) : null}
               {!disputeEvidenceSupported ? (
@@ -400,6 +496,12 @@ export function CreateEscrowProduct() {
               </div>
             ) : null}
 
+            {insufficientWalletBalance && estimatedFundingShannons !== null ? (
+              <div className="rounded-[1.25rem] border border-destructive/20 bg-destructive/5 p-4 text-sm leading-6 text-destructive">
+                Insufficient available balance. This escrow needs approximately {formatCkbBalance(estimatedFundingShannons)} CKB including occupied capacity and the fee reserve.
+              </div>
+            ) : null}
+
             {!hasAvailableArbitratorPool ? (
               <div className="rounded-[1.25rem] border border-destructive/20 bg-destructive/5 p-4 text-sm leading-6 text-destructive">
                 Escrow creation is unavailable on this network because dispute protection is not configured yet.
@@ -407,7 +509,7 @@ export function CreateEscrowProduct() {
             ) : null}
 
             <div className="flex flex-wrap gap-3">
-              <Button size="lg" disabled={!formReady || !deploymentReady || !hasAvailableArbitratorPool || busy} onClick={() => void createEscrow()}>
+              <Button size="lg" disabled={!formReady || !deploymentReady || !hasAvailableArbitratorPool || insufficientWalletBalance || isEstimatingFunding || busy} onClick={() => void createEscrow()}>
                 {busy ? "Submitting escrow..." : "Create & Fund Escrow"}
               </Button>
               <Button size="lg" variant="outline" onClick={() => void refreshEscrows()} disabled={!deploymentReady || busy}>

@@ -1,4 +1,18 @@
 export const MINIMUM_DEADLINE_LEAD_MS = 5 * 60 * 1000;
+export const CREATE_ESCROW_FEE_RESERVE_SHANNONS = 100_000_000n;
+
+export function estimateCreateEscrowFundingShannons(escrowOutputCapacity: bigint): bigint {
+  return escrowOutputCapacity + CREATE_ESCROW_FEE_RESERVE_SHANNONS;
+}
+
+export function hasInsufficientWalletBalance(
+  walletBalanceShannons: bigint | null,
+  estimatedFundingShannons: bigint | null,
+): boolean {
+  return walletBalanceShannons !== null
+    && estimatedFundingShannons !== null
+    && walletBalanceShannons < estimatedFundingShannons;
+}
 
 export function createEscrowReference(
   now = new Date(),
