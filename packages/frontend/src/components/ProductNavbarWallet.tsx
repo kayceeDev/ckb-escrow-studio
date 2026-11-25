@@ -15,6 +15,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useProductWorkspaceContext } from "../product/ProductWorkspaceContext";
+import { formatCkbBalance } from "../product/create-escrow-form";
 import { cn } from "../lib/utils";
 import { Badge, Button } from "./ui";
 
@@ -33,6 +34,10 @@ export function ProductNavbarWallet() {
     deploymentReady,
     isFetchingEscrows,
     activeLockHash,
+    walletBalanceShannons,
+    isFetchingWalletBalance,
+    walletBalanceError,
+    refreshWalletBalance,
     status,
   } = useProductWorkspaceContext();
   const [open, setOpen] = useState(false);
@@ -91,7 +96,13 @@ export function ProductNavbarWallet() {
             {activeSignerLabel ? activeSignerLabel.signerName : "Connect wallet"}
           </p>
           <p className="hidden max-w-[11rem] truncate text-xs text-muted-foreground xl:block">
-            {activeSignerLabel ? activeSignerLabel.walletName : deploymentReady ? "Choose wallet" : "Unavailable"}
+            {activeSignerLabel
+              ? isFetchingWalletBalance
+                ? "Checking balance..."
+                : walletBalanceShannons !== null
+                  ? `${formatCkbBalance(walletBalanceShannons)} CKB`
+                  : "Balance unavailable"
+              : deploymentReady ? "Choose wallet" : "Unavailable"}
           </p>
         </div>
 
@@ -193,6 +204,26 @@ export function ProductNavbarWallet() {
                   ) : null}
                 </div>
               </div>
+
+              {connected ? (
+                <div className="flex items-center justify-between gap-3 rounded-[0.9rem] border border-primary/20 bg-primary/5 p-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Available balance</p>
+                    <p className="mt-1 text-lg font-semibold text-foreground">
+                      {isFetchingWalletBalance
+                        ? "Checking..."
+                        : walletBalanceShannons !== null
+                          ? `${formatCkbBalance(walletBalanceShannons)} CKB`
+                          : "Unavailable"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">Spendable plain cells on {network}.</p>
+                    {walletBalanceError ? <p className="mt-1 text-xs text-destructive">Could not refresh balance.</p> : null}
+                  </div>
+                  <Button variant="outline" size="icon" onClick={() => void refreshWalletBalance()} disabled={isFetchingWalletBalance} title="Refresh balance">
+                    <RefreshCcw className={cn("h-4 w-4", isFetchingWalletBalance && "animate-spin")} />
+                  </Button>
+                </div>
+              ) : null}
 
               <div className="max-h-[19rem] space-y-1.5 overflow-y-auto pr-1">
                 {signerOptions.length === 0 ? (

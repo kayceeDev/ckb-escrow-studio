@@ -161,6 +161,9 @@ export function useProductWorkspace() {
   const [escrowFetchError, setEscrowFetchError] = useState<string | null>(null);
   const [status, setStatus] = useState("Idle");
   const [activeLockHash, setActiveLockHash] = useState<string | null>(null);
+  const [walletBalanceShannons, setWalletBalanceShannons] = useState<bigint | null>(null);
+  const [isFetchingWalletBalance, setIsFetchingWalletBalance] = useState(false);
+  const [walletBalanceError, setWalletBalanceError] = useState<string | null>(null);
   const [chainTipTimestampMs, setChainTipTimestampMs] = useState<bigint | null>(null);
   const [participantScripts, setParticipantScripts] = useState<ParticipantScriptRegistry>(() =>
     loadParticipantScriptRegistry(),
@@ -168,6 +171,7 @@ export function useProductWorkspace() {
   const controllerRef = useRef<ccc.SignersController | null>(null);
   const restoredSignerRef = useRef<string | null>(null);
   const [walletRefreshNonce, setWalletRefreshNonce] = useState(0);
+  const balanceRequestRef = useRef(0);
 
   const client = useMemo(() => NETWORK_CLIENTS[network], [network]);
 
@@ -224,6 +228,9 @@ export function useProductWorkspace() {
         setDeployment(resolveProductDeployment(nextNetwork));
         setWalletState({ wallets: [], activeSigner: null });
         setActiveLockHash(null);
+        balanceRequestRef.current += 1;
+        setWalletBalanceShannons(null);
+        setWalletBalanceError(null);
         setChainTipTimestampMs(null);
         setEscrows([]);
         setIndexedEscrows([]);
@@ -276,6 +283,54 @@ export function useProductWorkspace() {
       cancelled = true;
     };
   }, [walletState.activeSigner]);
+
+  const refreshWalletBalance = useCallback(async () => {
+    const signer = walletState.activeSigner;
+    const requestId = balanceRequestRef.current + 1;
+    balanceRequestRef.current = requestId;
+
+    if (!signer) {
+      setWalletBalanceShannons(null);
+      setWalletBalanceError(null);
+      setIsFetchingWalletBalance(false);
+      return;
+    }
+
+    setIsFetchingWalletBalance(true);
+    setWalletBalanceError(null);
+    try {
+      const balance = await signer.getBalance();
+      if (balanceRequestRef.current === requestId) {
+        setWalletBalanceShannons(balance);
+      }
+    } catch (error) {
+      if (balanceRequestRef.current === requestId) {
+        setWalletBalanceShannons(null);
+        setWalletBalanceError(error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      if (balanceRequestRef.current === requestId) {
+        setIsFetchingWalletBalance(false);
+      }
+    }
+  }, [network, walletState.activeSigner]);
+
+  useEffect(() => {
+    void refreshWalletBalance();
+    if (!walletState.activeSigner) return;
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshWalletBalance();
+    }, 30_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void refreshWalletBalance();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refreshWalletBalance, walletState.activeSigner]);
 
   const refreshEscrows = useCallback(async () => {
     if (!isDeploymentReady(deployment)) {
@@ -378,6 +433,9 @@ export function useProductWorkspace() {
       restoredSignerRef.current = null;
       setWalletState((current) => ({ ...current, activeSigner: null }));
       setActiveLockHash(null);
+      balanceRequestRef.current += 1;
+      setWalletBalanceShannons(null);
+      setWalletBalanceError(null);
       setEscrows([]);
       setIndexedEscrows([]);
       setHasFetchedEscrows(false);
@@ -396,6 +454,9 @@ export function useProductWorkspace() {
     setDeployment(resolveProductDeployment(nextNetwork));
     setWalletState({ wallets: [], activeSigner: null });
     setActiveLockHash(null);
+    balanceRequestRef.current += 1;
+    setWalletBalanceShannons(null);
+    setWalletBalanceError(null);
     setChainTipTimestampMs(null);
     setEscrows([]);
     setIndexedEscrows([]);
@@ -475,6 +536,10 @@ export function useProductWorkspace() {
     refreshEscrows,
     status,
     activeLockHash,
+    walletBalanceShannons,
+    isFetchingWalletBalance,
+    walletBalanceError,
+    refreshWalletBalance,
     chainTipTimestampMs,
     service,
     participantScripts,

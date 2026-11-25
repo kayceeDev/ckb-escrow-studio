@@ -11,6 +11,7 @@ import {
   FileText,
   Globe,
   Info,
+  RefreshCcw,
   Scale,
   ShieldCheck,
   Store,
@@ -40,6 +41,12 @@ import { createExplorerTxUrl, makeEscrowLock } from "../studio";
 import { isProductDisputeSignerSupported } from "./dispute-api";
 import { storedScriptFromScriptLike } from "./registry";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
+import {
+  createEscrowReference,
+  formatCkbBalance,
+  minimumDeadlineInputValue,
+  validateEscrowDeadline,
+} from "./create-escrow-form";
 
 function parseCkbToShannons(value: string): bigint {
   const normalized = value.trim();
@@ -74,11 +81,15 @@ export function CreateEscrowProduct() {
     status: workspaceStatus,
     saveParticipantScript,
     refreshEscrows,
+    walletBalanceShannons,
+    isFetchingWalletBalance,
+    refreshWalletBalance,
   } = useProductWorkspaceContext();
   const [sellerAddress, setSellerAddress] = useState("");
   const [amountCkb, setAmountCkb] = useState("350");
   const [deadline, setDeadline] = useState("");
-  const [referenceId, setReferenceId] = useState("INV-042");
+  const [referenceId, setReferenceId] = useState("");
+  const [clockMs, setClockMs] = useState(0);
   const [description, setDescription] = useState("Landing page redesign and responsive polish for the first milestone.");
   const [status, setStatus] = useState("Fill the form, connect a buyer wallet, and submit a live escrow on testnet.");
   const [busy, setBusy] = useState(false);
@@ -94,6 +105,16 @@ export function CreateEscrowProduct() {
   );
   const assignedArbitratorLabel = useAssignedArbitratorLabel(assignedArbitrator);
   const disputeEvidenceSupported = !walletState.activeSigner || isProductDisputeSignerSupported(walletState.activeSigner);
+  const deadlineError = deadline && clockMs ? validateEscrowDeadline(deadline, clockMs) : null;
+  const minimumDeadline = clockMs ? minimumDeadlineInputValue(clockMs) : undefined;
+
+  useEffect(() => {
+    setReferenceId(createEscrowReference());
+    const updateClock = () => setClockMs(Date.now());
+    updateClock();
+    const interval = window.setInterval(updateClock, 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     async function assignArbitrator() {
@@ -140,11 +161,13 @@ export function CreateEscrowProduct() {
           sellerAddress &&
           amountCkb &&
           deadline &&
+          !deadlineError &&
+          referenceId &&
           description &&
           assignedArbitrator &&
           !sellerMatchesBuyer,
       ),
-    [amountCkb, assignedArbitrator, deadline, description, sellerAddress, sellerMatchesBuyer, walletState.activeSigner],
+    [amountCkb, assignedArbitrator, deadline, deadlineError, description, referenceId, sellerAddress, sellerMatchesBuyer, walletState.activeSigner],
   );
 
   async function resolveScripts() {
@@ -206,10 +229,9 @@ export function CreateEscrowProduct() {
       setBusy(true);
       const { sellerScript, arbitratorScript } = await resolveScripts();
       const amountShannons = parseCkbToShannons(amountCkb);
+      const currentDeadlineError = validateEscrowDeadline(deadline);
+      if (currentDeadlineError) throw new Error(currentDeadlineError);
       const deadlineMs = BigInt(new Date(deadline).getTime());
-      if (deadlineMs <= BigInt(Date.now())) {
-        throw new Error("Deadline must be a valid future date/time.");
-      }
 
       const fullDescription = referenceId ? `${referenceId}: ${description}` : description;
 
@@ -224,6 +246,7 @@ export function CreateEscrowProduct() {
 
       await saveParticipantScripts();
       const refreshedEscrows = await refreshEscrows();
+      void refreshWalletBalance();
       const createdEscrow = refreshedEscrows.live.find((escrow) => escrow.txHash === txHash);
       const nextEscrowId = createdEscrow ? createdEscrow.txHash : txHash;
       setLastTxHash(txHash);
@@ -309,6 +332,24 @@ export function CreateEscrowProduct() {
               <p className="text-sm leading-6 text-muted-foreground">
                 Use the wallet control in the navbar to select the buyer wallet. Buyers do not need to manage technical setup in this flow.
               </p>
+              {walletState.activeSigner ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Available wallet balance</p>
+                    <p className="mt-1 font-semibold text-foreground">
+                      {isFetchingWalletBalance
+                        ? "Checking..."
+                        : walletBalanceShannons !== null
+                          ? `${formatCkbBalance(walletBalanceShannons)} CKB`
+                          : "Unavailable"}
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void refreshWalletBalance()} disabled={isFetchingWalletBalance}>
+                    <RefreshCcw className={isFetchingWalletBalance ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                    Refresh
+                  </Button>
+                </div>
+              ) : null}
               {!disputeEvidenceSupported ? (
                 <p className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
                   This wallet can sign escrow transactions, but authenticated dispute evidence is not supported for its signature type yet.
@@ -327,11 +368,24 @@ export function CreateEscrowProduct() {
               </div>
               <div className="space-y-2">
                 <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]"><CalendarClock className="h-4 w-4" />Deadline</Label>
-                <Input type="datetime-local" value={deadline} onChange={(event) => setDeadline(event.target.value)} />
+                <Input
+                  type="datetime-local"
+                  value={deadline}
+                  min={minimumDeadline}
+                  aria-invalid={Boolean(deadlineError)}
+                  onChange={(event) => setDeadline(event.target.value)}
+                />
+                {deadlineError ? <p className="text-xs text-destructive">{deadlineError}</p> : <p className="text-xs text-muted-foreground">Choose a time at least 5 minutes from now.</p>}
               </div>
               <div className="space-y-2">
-                <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]"><Vault className="h-4 w-4" />Reference / Order ID</Label>
-                <Input value={referenceId} onChange={(event) => setReferenceId(event.target.value)} placeholder="INV-042" />
+                <Label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]"><Vault className="h-4 w-4" />Escrow Reference</Label>
+                <div className="flex gap-2">
+                  <Input value={referenceId} readOnly aria-label="Generated escrow reference" />
+                  <Button type="button" variant="outline" size="icon" onClick={() => setReferenceId(createEscrowReference())} title="Generate a new reference">
+                    <RefreshCcw className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Generated for support and search. The creation transaction remains the authoritative on-chain ID.</p>
               </div>
             </div>
 
