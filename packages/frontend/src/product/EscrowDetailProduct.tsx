@@ -31,14 +31,17 @@ import {
   getIndexedCurrentOutPointForRoute,
   indexedEscrowReceiptRouteId,
   mergeProductEscrowRecords,
+  productEscrowRouteId,
   toIndexedProductEscrow,
   toLiveProductEscrow,
 } from "./contract";
+import { getEscrowDetailLoadState } from "./detail-load-state";
 import { DraftEvidenceItem, hashEvidenceText, productDisputeClient } from "./dispute-api";
 import { productIndexerClient } from "./indexer-api";
 import { findUpdatedEscrowRecord, pollForEscrowUpdate } from "./polling";
 import { scriptHashFromStored, scriptLikeFromStored, storedScriptFromScriptLike } from "./registry";
 import { createEscrowInput } from "./utils";
+import { collectEscrowTransactionEvidence } from "./transaction-evidence";
 import { useProductWorkspaceContext } from "./ProductWorkspaceContext";
 
 function ActionBadge({ source }: { source: ProductEscrowRecord["source"] }) {
@@ -215,6 +218,10 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
   const [responseFiles, setResponseFiles] = useState<FileEvidenceDraft[]>([]);
   const [decisionNote, setDecisionNote] = useState("");
   const [exactLiveItem, setExactLiveItem] = useState<EscrowListItem | null>(null);
+  const [lastKnownRecord, setLastKnownRecord] = useState<{
+    escrowId: string;
+    record: ProductEscrowRecord;
+  } | null>(null);
 
   useEffect(() => {
     if (!deploymentReady || isFetchingEscrows || hasFetchedEscrows) {
@@ -253,6 +260,28 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     }
     return null;
   }, [activeLockHash, chainTipTimestampMs, indexedItem, liveItem]);
+  const transactionEvidence = useMemo(
+    () => collectEscrowTransactionEvidence({
+      submittedTxHash: lastTxHash,
+      liveEscrow: liveItem,
+      indexedEscrow: indexedItem,
+    }),
+    [indexedItem, lastTxHash, liveItem],
+  );
+  const hasLastKnownRecord = lastKnownRecord?.escrowId === escrowId;
+  const detailLoadState = getEscrowDetailLoadState({
+    hasRecord: record !== null,
+    hasLastKnownRecord,
+    submittedTxHash: lastTxHash || null,
+    isFetchingEscrows,
+    hasFetchedEscrows,
+    isFetchingIndexedDetail,
+    hasError: Boolean(escrowFetchError || indexedDetailError),
+  });
+
+  useEffect(() => {
+    if (record) setLastKnownRecord({ escrowId, record });
+  }, [escrowId, record]);
   const buyerStoredScript = useMemo(
     () => (record ? participantScripts[record.buyerLockHash] ?? null : null),
     [participantScripts, record],
@@ -550,6 +579,10 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
       }
 
       setStatus(`Escrow updated to ${result.record.state}.`);
+      const nextRouteId = productEscrowRouteId(result.record);
+      if (nextRouteId !== escrowId) {
+        router.replace(`/escrows/${encodeURIComponent(nextRouteId)}`);
+      }
       return;
     }
 
@@ -734,7 +767,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     );
   }
 
-  if (!record && (isFetchingEscrows || !hasFetchedEscrows || isFetchingIndexedDetail)) {
+  if (detailLoadState === "loading") {
     return (
       <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
         <Card>
@@ -749,7 +782,7 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     );
   }
 
-  if (!record && (escrowFetchError || indexedDetailError)) {
+  if (detailLoadState === "error") {
     return (
       <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
         <Card>
@@ -771,7 +804,49 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
     );
   }
 
-  if (!record) {
+  if (detailLoadState === "confirming" || detailLoadState === "synchronizing") {
+    const previousState = hasLastKnownRecord ? lastKnownRecord.record.state : null;
+    return (
+      <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
+        <Card>
+          <CardContent className="space-y-4 p-8">
+            <p className="text-lg font-semibold">
+              {detailLoadState === "confirming" ? "Confirming escrow transaction" : "Updating escrow state"}
+            </p>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {detailLoadState === "confirming"
+                ? "The transaction was submitted. The previous cell has been consumed while the replacement state is being confirmed."
+                : `This escrow was previously loaded${previousState ? ` in ${previousState} state` : ""}. Its replacement cell is still being synchronized.`}
+            </p>
+            {lastTxHash ? (
+              <div className="rounded-xl border border-border bg-white/75 p-3">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Submitted transaction</p>
+                <p className="mt-2 break-all font-mono text-xs text-foreground">{lastTxHash}</p>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={() => void refreshEscrows()} disabled={isFetchingEscrows}>
+                <RefreshCcw className="h-4 w-4" />
+                {isFetchingEscrows ? "Checking..." : "Check state now"}
+              </Button>
+              {lastTxHash ? (
+                <Button asChild variant="outline">
+                  <Link href={createExplorerTxUrl(lastTxHash, network)} target="_blank" rel="noreferrer">
+                    Open in explorer <ExternalLink className="h-4 w-4" />
+                  </Link>
+                </Button>
+              ) : null}
+              <Button asChild variant="outline">
+                <Link href="/escrows">Open escrow ledger</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (detailLoadState === "not-found" || !record) {
     return (
       <div className="mx-auto w-full max-w-[960px] px-4 py-10 md:px-6">
         <Card>
@@ -850,6 +925,33 @@ export function EscrowDetailProduct({ escrowId }: { escrowId: string }) {
                   This reviewer was assigned when the escrow was created and handles disputes if the deal is escalated.
                 </p>
               </div>
+
+              {transactionEvidence.length > 0 ? (
+                <div className="rounded-[1.25rem] border border-border bg-white/75 p-4">
+                  <div className="mb-3 flex items-center gap-2 text-primary">
+                    <Link2 className="h-4 w-4" />
+                    <strong className="text-sm text-foreground">Transaction history</strong>
+                  </div>
+                  <div className="space-y-3">
+                    {transactionEvidence.map((transaction) => (
+                      <div key={transaction.txHash} className="rounded-xl border border-border/70 bg-secondary/35 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-muted-foreground">{transaction.label}</span>
+                          <Link
+                            href={createExplorerTxUrl(transaction.txHash, network)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-primary"
+                          >
+                            Explorer <ExternalLink className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+                        <p className="mt-2 break-all font-mono text-xs text-foreground">{transaction.txHash}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-[1.25rem] border border-primary/20 bg-primary/6 p-4 text-sm text-muted-foreground">

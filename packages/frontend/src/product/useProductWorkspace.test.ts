@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type * as ccc from "@ckb-ccc/ccc";
 
 import {
   getProductSignerOptions,
+  restoreSignerConnection,
   selectActiveSignerAfterWalletRefresh,
   shouldReconnectActiveSigner,
   signerStorageKey,
@@ -120,5 +121,26 @@ describe("product wallet lifecycle helpers", () => {
         restoredSignerKey: null,
       }),
     ).toBe(true);
+  });
+
+  it("reuses an authorized wallet session without requesting authentication again", async () => {
+    const active = {
+      isConnected: vi.fn(async () => true),
+      connect: vi.fn(async () => undefined),
+    } as unknown as ccc.Signer;
+
+    await expect(restoreSignerConnection(active)).resolves.toBe("reused");
+    expect(active.isConnected).toHaveBeenCalledOnce();
+    expect(active.connect).not.toHaveBeenCalled();
+  });
+
+  it("connects a restored signer when its provider session has expired", async () => {
+    const active = {
+      isConnected: vi.fn(async () => false),
+      connect: vi.fn(async () => undefined),
+    } as unknown as ccc.Signer;
+
+    await expect(restoreSignerConnection(active)).resolves.toBe("connected");
+    expect(active.connect).toHaveBeenCalledOnce();
   });
 });

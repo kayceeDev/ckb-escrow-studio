@@ -10,6 +10,35 @@ export type EscrowPollingResult =
   | { status: "updated"; record: ProductEscrowRecord }
   | { status: "timeout" };
 
+export interface VisibleEscrowPollingOptions {
+  refresh: () => Promise<unknown>;
+  intervalMs: number;
+  getVisibilityState: () => "visible" | "hidden";
+  setInterval: (callback: () => void, intervalMs: number) => unknown;
+  clearInterval: (intervalId: unknown) => void;
+  subscribeVisibility: (callback: () => void) => () => void;
+}
+
+export function startVisibleEscrowPolling(options: VisibleEscrowPollingOptions): () => void {
+  let refreshInFlight = false;
+  const refreshIfVisible = () => {
+    if (options.getVisibilityState() !== "visible" || refreshInFlight) return;
+    refreshInFlight = true;
+    void options.refresh()
+      .catch(() => undefined)
+      .finally(() => {
+        refreshInFlight = false;
+      });
+  };
+  const intervalId = options.setInterval(refreshIfVisible, options.intervalMs);
+  const unsubscribeVisibility = options.subscribeVisibility(refreshIfVisible);
+
+  return () => {
+    options.clearInterval(intervalId);
+    unsubscribeVisibility();
+  };
+}
+
 export function findUpdatedEscrowRecord(input: {
   records: ProductEscrowRecord[];
   previousRecord: ProductEscrowRecord;
@@ -17,16 +46,18 @@ export function findUpdatedEscrowRecord(input: {
   expectedTerminal: boolean;
 }): ProductEscrowRecord | null {
   const { records, previousRecord, submittedTxHash, expectedTerminal } = input;
+  const bySubmittedTx = records.find(
+    (record) => record.id.includes(submittedTxHash) || record.currentId?.includes(submittedTxHash),
+  );
+  if (bySubmittedTx) {
+    return bySubmittedTx;
+  }
+
   const previousKeys = new Set([previousRecord.stableId, previousRecord.currentId, previousRecord.id].filter(Boolean));
   const matchingRecords = records.filter((record) => {
     const keys = [record.stableId, record.currentId, record.id].filter(Boolean);
     return keys.some((key) => previousKeys.has(key));
   });
-
-  const bySubmittedTx = matchingRecords.find((record) => record.id.includes(submittedTxHash) || record.currentId?.includes(submittedTxHash));
-  if (bySubmittedTx) {
-    return bySubmittedTx;
-  }
 
   const changedState = matchingRecords.find((record) => record.state !== previousRecord.state);
   if (changedState) {

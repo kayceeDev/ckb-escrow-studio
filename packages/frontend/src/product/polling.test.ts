@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { findUpdatedEscrowRecord, pollForEscrowUpdate } from "./polling";
+import {
+  findUpdatedEscrowRecord,
+  pollForEscrowUpdate,
+  startVisibleEscrowPolling,
+} from "./polling";
 import type { ProductEscrowRecord } from "./contract";
 
 function record(input: Partial<ProductEscrowRecord> = {}): ProductEscrowRecord {
@@ -40,6 +44,28 @@ describe("escrow update polling", () => {
     })).toEqual(updated);
   });
 
+  it("detects the submitted live cell before the indexer links its stable escrow id", () => {
+    const submittedTxHash = `0x${"44".repeat(32)}`;
+    const { stableId: _previousStableId, ...previous } = record({
+      id: `0x${"11".repeat(32)}:0`,
+      source: "live",
+      currentId: `0x${"11".repeat(32)}:0`,
+    });
+    const { stableId: _deliveredStableId, ...delivered } = record({
+      id: `${submittedTxHash}:0`,
+      state: "Delivered",
+      source: "live",
+      currentId: `${submittedTxHash}:0`,
+    });
+
+    expect(findUpdatedEscrowRecord({
+      records: [delivered],
+      previousRecord: previous,
+      submittedTxHash,
+      expectedTerminal: false,
+    })).toEqual(delivered);
+  });
+
   it("detects terminal indexed history when live cell disappears", () => {
     const terminal = record({ state: "Cancelled", source: "indexed", currentId: null });
 
@@ -65,5 +91,47 @@ describe("escrow update polling", () => {
     await vi.advanceTimersByTimeAsync(40);
     await expect(promise).resolves.toEqual({ status: "timeout" });
     vi.useRealTimers();
+  });
+
+  it("polls escrow state only while the page is visible and cleans up", async () => {
+    let visibility: "visible" | "hidden" = "visible";
+    let intervalCallback: () => void = () => undefined;
+    let visibilityCallback: () => void = () => undefined;
+    const refresh = vi.fn(async () => undefined);
+    const clearInterval = vi.fn();
+    const unsubscribe = vi.fn();
+
+    const stop = startVisibleEscrowPolling({
+      refresh,
+      intervalMs: 10_000,
+      getVisibilityState: () => visibility,
+      setInterval: (callback) => {
+        intervalCallback = callback;
+        return 7;
+      },
+      clearInterval,
+      subscribeVisibility: (callback) => {
+        visibilityCallback = callback;
+        return unsubscribe;
+      },
+    });
+
+    intervalCallback();
+    await Promise.resolve();
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    visibility = "hidden";
+    intervalCallback();
+    await Promise.resolve();
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    visibility = "visible";
+    visibilityCallback();
+    await Promise.resolve();
+    expect(refresh).toHaveBeenCalledTimes(2);
+
+    stop();
+    expect(clearInterval).toHaveBeenCalledWith(7);
+    expect(unsubscribe).toHaveBeenCalledOnce();
   });
 });

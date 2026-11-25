@@ -7,6 +7,7 @@ import type { IndexedEscrowRecord } from "@ckb-escrow/indexer";
 
 import { createCellDep, createTypeScript } from "./utils";
 import { productIndexerClient } from "./indexer-api";
+import { startVisibleEscrowPolling } from "./polling";
 import {
   loadParticipantScriptRegistry,
   PARTICIPANT_SCRIPT_STORAGE_KEY,
@@ -98,6 +99,19 @@ export function shouldReconnectActiveSigner(input: {
     input.restoredSignerKey !==
     signerStorageKey(input.activeOption.walletName, input.activeOption.signerName)
   );
+}
+
+export async function restoreSignerConnection(
+  signer: ccc.Signer,
+): Promise<"reused" | "connected"> {
+  try {
+    if (await signer.isConnected()) return "reused";
+  } catch {
+    // Some providers require connect before they can report session state.
+  }
+
+  await signer.connect();
+  return "connected";
 }
 
 function loadStoredActiveSigner(): StoredActiveSigner | null {
@@ -380,6 +394,22 @@ export function useProductWorkspace() {
     setEscrowFetchError(null);
   }, [deployment, network, refreshEscrows]);
 
+  useEffect(() => {
+    if (!isDeploymentReady(deployment)) return;
+
+    return startVisibleEscrowPolling({
+      refresh: refreshEscrows,
+      intervalMs: 10_000,
+      getVisibilityState: () => document.visibilityState === "visible" ? "visible" : "hidden",
+      setInterval: (callback, intervalMs) => window.setInterval(callback, intervalMs),
+      clearInterval: (intervalId) => window.clearInterval(intervalId as number),
+      subscribeVisibility: (callback) => {
+        document.addEventListener("visibilitychange", callback);
+        return () => document.removeEventListener("visibilitychange", callback);
+      },
+    });
+  }, [deployment, refreshEscrows]);
+
   const service = useMemo(
     () =>
       walletState.activeSigner && isDeploymentReady(deployment)
@@ -486,15 +516,14 @@ export function useProductWorkspace() {
 
     const key = signerStorageKey(activeOption.walletName, activeOption.signerName);
     restoredSignerRef.current = key;
-    void activeSigner
-      .connect()
-      .then(() => {
+    void restoreSignerConnection(activeSigner)
+      .then((result) => {
         saveStoredActiveSigner({
           network,
           walletName: activeOption.walletName,
           signerName: activeOption.signerName,
         });
-        setStatus("Wallet reconnected.");
+        setStatus(result === "reused" ? "Wallet session restored." : "Wallet reconnected.");
       })
       .catch(() => {
         clearStoredActiveSigner();
